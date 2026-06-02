@@ -71,11 +71,10 @@ namespace XIVLauncher.Common.Dalamud
             var applicable = this.updater.ReCheckVersion(gamePath) ?? throw new DalamudRunnerException("ReCheckVersion returned null.");
             if (!applicable)
             {
-                this.updater.SetOverlayProgress(IDalamudLoadingOverlay.DalamudUpdateStep.Unavailable);
-                this.updater.ShowOverlay();
-                Log.Error("[HOOKS] ReCheckVersion fail");
-
-                return DalamudInstallState.OutOfDate;
+                // [estell] パッチ違い(実ゲームver != SupportedGameVer)でも Dalamud 注入を続行する。
+                // 本家のブロック(return DalamudInstallState.OutOfDate)を撤廃。
+                // 未対応クライアントへの注入はクラッシュし得るため自己責任。
+                Log.Warning("[HOOKS] ReCheckVersion mismatch (game ver != SupportedGameVer) — estell: proceeding with injection anyway");
             }
 
             return DalamudInstallState.Ok;
