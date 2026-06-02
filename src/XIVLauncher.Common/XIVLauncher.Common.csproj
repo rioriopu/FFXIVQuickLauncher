@@ -13,6 +13,14 @@
         <DefineConstants Condition=" '$(ExtraDefineConstants)' != '' ">$(DefineConstants);$(ExtraDefineConstants)</DefineConstants>
     </PropertyGroup>
 
+    <!-- [estell] Windows 向けビルド時に WINDOWS を自動定義する。
+         本家は ExtraDefineConstants=WINDOWS を外部(ビルド環境変数)で渡す前提だが、
+         フォーク単体で publish/build しても ArgumentBuilder 等が正しく Windows 分岐を
+         コンパイルできるよう、Windows ホストまたは win RID の場合に定義する。 -->
+    <PropertyGroup Condition=" $([MSBuild]::IsOSPlatform('Windows')) Or $(RuntimeIdentifier.StartsWith('win')) ">
+        <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+    </PropertyGroup>
+
     <PropertyGroup Label="Configuration" Condition="'$(Configuration)'=='Release'">
         <AppOutputBase>$(MSBuildProjectDirectory)\</AppOutputBase>
         <PathMap>$(AppOutputBase)=C:\goatsoft\xl\XIVLauncher.Common\</PathMap>

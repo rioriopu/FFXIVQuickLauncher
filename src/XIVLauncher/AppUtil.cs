@@ -231,6 +231,9 @@ namespace XIVLauncher
             return true;
         }
 
-        public static bool IsDisableUpdates => EnvironmentSettings.CheckEnvBool("XL_NOAUTOUPDATE") || DebugHelpers.IsDebugBuild;
+        // [estell] 自前ビルドが公式 Velopack の自己更新で上書き(revert)されないよう、ランチャー自動更新を常時無効化。
+        //          (Dalamud/アセットの更新は DalamudUpdater 側で別管理のため影響なし)
+        public static bool IsDisableUpdates => true;
+
     }
 }
