@@ -1072,40 +1072,60 @@ namespace XIVLauncher.Windows.ViewModel
         public async Task<Process> StartGameAndAddon(Launcher.LoginResult loginResult, bool isSteam, bool forceNoDalamud, bool noThird, bool noPlugins)
         {
             // [estell] アカウント別プロファイル(ログイン押下時の処理):
-            // ログインID(UserName)と同名のプロファイルがあれば、今回のゲーム起動の
-            // Dalamud 設定/プラグインフォルダ(configDirectory)をそのプロファイルのフォルダにする。
-            // Dalamud本体/ランタイム/アセットは共有(App.DalamudUpdater)で、プラグインと
-            // dalamudConfig のみアカウント別になる。一致なし/機能OFF時は従来どおり既定フォルダ。
-            var gameConfigDir = Paths.RoamingPath;
-            try
+            // ログインID(UserName)と同名の(非Default)プロファイルがあれば、今回のゲーム起動を
+            // そのプロファイルのフォルダ「完全独立(フルセット)」で行う。
+            // Dalamud本体/ランタイム/アセットもアカウントフォルダに展開し(=デフォルトと同じ構成)、
+            // 設定/プラグインもそのフォルダを使う。一致なし/機能OFF時は既定(共有)のまま。
+            var gameRoaming = Paths.RoamingPath;
+            var updaterForGame = App.DalamudUpdater;
+            if (App.Settings.InGameAddonEnabled && !forceNoDalamud)
             {
-                var profileManager = new AccountProfileManager();
-                var loginId = this.AccountManager?.CurrentAccount?.UserName;
-                if (profileManager.Enabled && !string.IsNullOrWhiteSpace(loginId))
+                try
                 {
-                    var match = profileManager.Profiles.FirstOrDefault(
-                        p => !p.IsDefault && string.Equals(p.Name, loginId, StringComparison.OrdinalIgnoreCase));
-                    if (match != null)
+                    var profileManager = new AccountProfileManager();
+                    var loginId = this.AccountManager?.CurrentAccount?.UserName;
+                    if (profileManager.Enabled && !string.IsNullOrWhiteSpace(loginId))
                     {
-                        var folder = match.ResolvedRoamingPath;
-                        if (!string.Equals(folder, Paths.RoamingPath, StringComparison.OrdinalIgnoreCase))
+                        var match = profileManager.Profiles.FirstOrDefault(
+                            p => !p.IsDefault && string.Equals(p.Name, loginId, StringComparison.OrdinalIgnoreCase));
+                        if (match != null)
                         {
-                            Directory.CreateDirectory(folder);
-                            gameConfigDir = folder;
-                            Log.Information("[estell] login '{LoginId}' -> profile config/plugin folder: {Folder}", loginId, folder);
+                            var folder = match.ResolvedRoamingPath;
+                            if (!string.Equals(folder, Paths.RoamingPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                Directory.CreateDirectory(folder);
+
+                                // アカウントフォルダ専用の DalamudUpdater(本体/ランタイム/アセットも自前=完全独立)。
+                                var profileUpdater = new DalamudUpdater(
+                                    App.HttpClient,
+                                    new DirectoryInfo(Path.Combine(folder, "addon")),
+                                    new DirectoryInfo(Path.Combine(folder, "runtime")),
+                                    new DirectoryInfo(Path.Combine(folder, "dalamudAssets")),
+                                    App.UniqueIdCache,
+                                    App.Settings.DalamudRolloutBucket)
+                                {
+                                    Overlay = App.DalamudUpdater.Overlay,
+                                    RunnerOverride = App.DalamudUpdater.RunnerOverride,
+                                };
+                                profileUpdater.Run(App.Settings.DalamudBetaKind, App.Settings.DalamudBetaKey);
+
+                                gameRoaming = folder;
+                                updaterForGame = profileUpdater;
+                                Log.Information("[estell] login '{LoginId}' -> independent profile folder: {Folder}", loginId, folder);
+                            }
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "[estell] account profile resolution failed; using default folder");
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "[estell] account profile resolution failed; using default folder");
+                }
             }
 
-            var dalamudLauncher = new DalamudLauncher(new WindowsDalamudRunner(App.DalamudUpdater.Runtime), App.DalamudUpdater, App.Settings.InGameAddonLoadMethod.GetValueOrDefault(DalamudLoadMethod.DllInject),
+            var dalamudLauncher = new DalamudLauncher(new WindowsDalamudRunner(updaterForGame.Runtime), updaterForGame, App.Settings.InGameAddonLoadMethod.GetValueOrDefault(DalamudLoadMethod.DllInject),
                 App.Settings.GamePath,
-                new DirectoryInfo(gameConfigDir),
-                new DirectoryInfo(gameConfigDir),
+                new DirectoryInfo(gameRoaming),
+                new DirectoryInfo(gameRoaming),
                 App.Settings.Language.GetValueOrDefault(ClientLanguage.English),
                 (int)App.Settings.DalamudInjectionDelayMs,
                 false,
