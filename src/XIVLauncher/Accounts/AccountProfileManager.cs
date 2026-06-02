@@ -102,6 +102,8 @@ namespace XIVLauncher.Accounts
         public int ImportFromSavedAccounts(IEnumerable<XivAccount> accounts)
         {
             var added = 0;
+            var def = this.Profiles.FirstOrDefault(p => p.IsDefault);
+
             foreach (var account in accounts)
             {
                 if (account?.UserName == null)
@@ -114,12 +116,26 @@ namespace XIVLauncher.Accounts
                 if (this.Profiles.Any(p => string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase)))
                     continue;
 
+                // 1人目: 未割当の Default(名前が既定の "Default")があれば、そこに割り当てる。
+                // IsDefault は true のままなので %APPDATA%\XIVLauncher(既存データ)をそのまま使う。
+                if (def != null && IsUnassignedDefault(def))
+                {
+                    def.Name = profileName;
+                    added++;
+                    continue;
+                }
+
+                // 2人目以降: 自動命名(%APPDATA%\XIVLauncher_<名>)の独立プロファイルとして追加。
                 this.Profiles.Add(new AccountProfile { Name = profileName });
                 added++;
             }
 
             return added;
         }
+
+        /// <summary>Default が未割当(名前が既定の "Default" のまま、または空)かどうか。</summary>
+        private static bool IsUnassignedDefault(AccountProfile def) =>
+            string.IsNullOrWhiteSpace(def.Name) || string.Equals(def.Name, "Default", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>現在実行中の XIVLauncher 実行ファイルのパス。</summary>
         private static string GetLauncherExePath() =>
