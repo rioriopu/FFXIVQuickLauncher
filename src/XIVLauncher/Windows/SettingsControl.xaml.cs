@@ -395,6 +395,16 @@ namespace XIVLauncher.Windows
             window.ShowDialog();
         }
 
+        private void OpenAccountProfiles_OnClick(object sender, RoutedEventArgs e)
+        {
+            var window = new AccountProfilesWindow
+            {
+                Owner = Window.GetWindow(this)
+            };
+
+            window.ShowDialog();
+        }
+
         private void LicenseText_OnMouseUp(object sender, MouseButtonEventArgs e)
         {
             Process.Start(Path.Combine(Paths.ResourcesPath, "LICENSE.txt"));

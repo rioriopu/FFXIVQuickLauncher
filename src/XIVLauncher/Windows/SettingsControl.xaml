@@ -207,6 +207,23 @@
                                     </StackPanel>
                                 </Button>
                             </Border>
+
+                            <!-- [estell] アカウント別プロファイル(複数アカウント/多重起動) -->
+                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,18,0,0"
+                                       Foreground="{DynamicResource MaterialDesignBody}"
+                                       Text="アカウント別プロファイル(複数アカウント/多重起動)" />
+                            <TextBlock HorizontalAlignment="Left" Foreground="DarkGray" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       Text="アカウントごとに独立したデータフォルダと起動ショートカットを作成します。1アカウント目は通常の %APPDATA%\XIVLauncher を使用します。" />
+                            <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="2" CornerRadius="4" Margin="10, 10, 0, 10" HorizontalAlignment="Left">
+                                <Button Style="{DynamicResource MaterialDesignFlatButton}"
+                                        HorizontalAlignment="Center"
+                                        Click="OpenAccountProfiles_OnClick">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Margin="0 0 0 0" VerticalAlignment="Center"
+                                                   Foreground="DarkGray" FontSize="12" Text="アカウント別プロファイルを管理..." />
+                                    </StackPanel>
+                                </Button>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

@@ -1,0 +1,117 @@
+<Window
+    x:Class="XIVLauncher.Windows.AccountProfilesWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    mc:Ignorable="d"
+    Title="XIVLauncher - アカウント別プロファイル" Height="460" Width="820" WindowStartupLocation="CenterScreen" MinHeight="360" MinWidth="640"
+    Icon="pack://application:,,,/Resources/dalamud_icon.ico" ResizeMode="CanResize"
+    TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+    Background="{DynamicResource MaterialDesignPaper}"
+    TextElement.FontWeight="Medium"
+    FontFamily="pack://application:,,,/MaterialDesignThemes.Wpf;component/Resources/Roboto/#Roboto">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="アカウント別プロファイル" FontWeight="Bold" FontSize="16" Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Foreground="DarkGray" FontSize="12"
+                       Text="各プロファイルは独立したデータフォルダ(Roaming)を持ちます。1アカウント目(既定)は %APPDATA%\XIVLauncher を使用します。2アカウント目以降は自動で XIVLauncher_&lt;名&gt; を使うか、フォルダを指定できます。生成したショートカットから多重起動してください。" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,10,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左: プロファイル一覧 -->
+            <DockPanel Grid.Column="0" Margin="0,0,10,0">
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Content="追加" Width="100" Height="30" Margin="0,0,6,0" Click="Add_Click" />
+                    <Button Content="削除" Width="100" Height="30" Click="Remove_Click" />
+                </StackPanel>
+                <ListBox x:Name="ProfileList" DisplayMemberPath="Name"
+                         ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" />
+            </DockPanel>
+
+            <!-- 右: 詳細編集 -->
+            <Border Grid.Column="1" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="4" Padding="12">
+                <StackPanel DataContext="{Binding SelectedProfile}">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+
+                    <TextBlock Text="プロファイル名" Foreground="DarkGray" FontSize="12" />
+                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,10">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDefault}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+
+                    <CheckBox Content="カスタムフォルダを使う" IsChecked="{Binding UseCustomFolder}" Margin="0,0,0,6">
+                        <CheckBox.Style>
+                            <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDefault}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </CheckBox.Style>
+                    </CheckBox>
+
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding CustomFolder, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding UseCustomFolder}" VerticalAlignment="Center"
+                                 materialDesign:HintAssist.Hint="フォルダパス" />
+                        <Button Grid.Column="1" Content="参照" Width="80" Height="30" Margin="6,0,0,0"
+                                IsEnabled="{Binding UseCustomFolder}" Click="Browse_Click" />
+                    </Grid>
+
+                    <TextBlock Text="実データフォルダ:" Foreground="DarkGray" FontSize="12" />
+                    <TextBox Text="{Binding ResolvedRoamingPath, Mode=OneWay}" IsReadOnly="True" Margin="0,2,0,0"
+                             Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 下: 操作ボタン -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Button Content="選択をショートカット生成" Width="190" Height="32" Margin="0,0,8,0" Click="GenerateSelected_Click" />
+                <Button Content="全てデスクトップに生成" Width="190" Height="32" Click="GenerateAll_Click" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="保存して閉じる" Width="150" Height="32" Margin="0,0,8,0" Click="Save_Click" />
+                <Button Content="キャンセル" Style="{StaticResource MaterialDesignRaisedCancelButton}" Width="120" Height="32" Click="Cancel_Click" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
