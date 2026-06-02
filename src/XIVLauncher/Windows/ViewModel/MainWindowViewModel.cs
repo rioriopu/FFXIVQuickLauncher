@@ -1071,10 +1071,41 @@ namespace XIVLauncher.Windows.ViewModel
 
         public async Task<Process> StartGameAndAddon(Launcher.LoginResult loginResult, bool isSteam, bool forceNoDalamud, bool noThird, bool noPlugins)
         {
+            // [estell] アカウント別プロファイル(ログイン押下時の処理):
+            // ログインID(UserName)と同名のプロファイルがあれば、今回のゲーム起動の
+            // Dalamud 設定/プラグインフォルダ(configDirectory)をそのプロファイルのフォルダにする。
+            // Dalamud本体/ランタイム/アセットは共有(App.DalamudUpdater)で、プラグインと
+            // dalamudConfig のみアカウント別になる。一致なし/機能OFF時は従来どおり既定フォルダ。
+            var gameConfigDir = Paths.RoamingPath;
+            try
+            {
+                var profileManager = new AccountProfileManager();
+                var loginId = this.AccountManager?.CurrentAccount?.UserName;
+                if (profileManager.Enabled && !string.IsNullOrWhiteSpace(loginId))
+                {
+                    var match = profileManager.Profiles.FirstOrDefault(
+                        p => !p.IsDefault && string.Equals(p.Name, loginId, StringComparison.OrdinalIgnoreCase));
+                    if (match != null)
+                    {
+                        var folder = match.ResolvedRoamingPath;
+                        if (!string.Equals(folder, Paths.RoamingPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Directory.CreateDirectory(folder);
+                            gameConfigDir = folder;
+                            Log.Information("[estell] login '{LoginId}' -> profile config/plugin folder: {Folder}", loginId, folder);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "[estell] account profile resolution failed; using default folder");
+            }
+
             var dalamudLauncher = new DalamudLauncher(new WindowsDalamudRunner(App.DalamudUpdater.Runtime), App.DalamudUpdater, App.Settings.InGameAddonLoadMethod.GetValueOrDefault(DalamudLoadMethod.DllInject),
                 App.Settings.GamePath,
-                new DirectoryInfo(Paths.RoamingPath),
-                new DirectoryInfo(Paths.RoamingPath),
+                new DirectoryInfo(gameConfigDir),
+                new DirectoryInfo(gameConfigDir),
                 App.Settings.Language.GetValueOrDefault(ClientLanguage.English),
                 (int)App.Settings.DalamudInjectionDelayMs,
                 false,
