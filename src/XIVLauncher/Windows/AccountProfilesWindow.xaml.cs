@@ -26,7 +26,23 @@ namespace XIVLauncher.Windows
         {
             this.InitializeComponent();
             this.manager = new AccountProfileManager();
-            this.DataContext = new AccountProfilesViewModel(this.manager.Profiles);
+            this.DataContext = new AccountProfilesViewModel(this.manager);
+        }
+
+        private void ImportAccounts_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var accountManager = new AccountManager(App.Settings);
+                var added = this.manager.ImportFromSavedAccounts(accountManager.Accounts);
+                MessageBox.Show(
+                    added > 0 ? $"{added} 件の保存アカウントを取り込みました。" : "取り込める新規アカウントはありませんでした。",
+                    "XIVLauncher", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"アカウントの取り込みに失敗しました:\n{ex.Message}", "XIVLauncher", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void Add_Click(object sender, RoutedEventArgs e)
@@ -116,9 +132,17 @@ namespace XIVLauncher.Windows
     /// <summary>アカウント別プロファイル管理ウィンドウの ViewModel。</summary>
     public class AccountProfilesViewModel : INotifyPropertyChanged
     {
+        private readonly AccountProfileManager manager;
         private AccountProfile? selectedProfile;
 
         public ObservableCollection<AccountProfile> Profiles { get; }
+
+        /// <summary>機能自体の有効/無効(チェックボックスに連動、accountProfiles.json に保存)。</summary>
+        public bool Enabled
+        {
+            get => this.manager.Enabled;
+            set { this.manager.Enabled = value; this.OnChanged(); }
+        }
 
         public AccountProfile? SelectedProfile
         {
@@ -126,10 +150,11 @@ namespace XIVLauncher.Windows
             set { this.selectedProfile = value; this.OnChanged(); }
         }
 
-        public AccountProfilesViewModel(ObservableCollection<AccountProfile> profiles)
+        public AccountProfilesViewModel(AccountProfileManager manager)
         {
-            this.Profiles = profiles;
-            this.SelectedProfile = profiles.FirstOrDefault();
+            this.manager = manager;
+            this.Profiles = manager.Profiles;
+            this.SelectedProfile = manager.Profiles.FirstOrDefault();
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

@@ -23,10 +23,21 @@ namespace XIVLauncher.Accounts
 
         public ObservableCollection<AccountProfile> Profiles { get; private set; } = new();
 
+        /// <summary>アカウント別プロファイル機能自体の有効/無効。</summary>
+        public bool Enabled { get; set; } = true;
+
         public AccountProfileManager()
         {
             this.Load();
             this.EnsureDefault();
+        }
+
+        /// <summary>accountProfiles.json の保存形式(機能の有効フラグ + プロファイル一覧)。</summary>
+        private class ProfileStore
+        {
+            public bool Enabled { get; set; } = true;
+
+            public List<AccountProfile> Profiles { get; set; } = new();
         }
 
         /// <summary>1アカウント目(既定)プロファイルが必ず先頭に存在するようにする。</summary>
@@ -46,12 +57,23 @@ namespace XIVLauncher.Accounts
         {
             try
             {
-                if (File.Exists(StorePath))
+                if (!File.Exists(StorePath))
+                    return;
+
+                var json = File.ReadAllText(StorePath);
+
+                // 新形式(ProfileStore)を優先。旧形式(プロファイルの配列のみ)も後方互換で読む。
+                var store = JsonConvert.DeserializeObject<ProfileStore>(json);
+                if (store?.Profiles != null && store.Profiles.Count > 0)
                 {
-                    var list = JsonConvert.DeserializeObject<List<AccountProfile>>(File.ReadAllText(StorePath));
-                    if (list != null)
-                        this.Profiles = new ObservableCollection<AccountProfile>(list);
+                    this.Enabled = store.Enabled;
+                    this.Profiles = new ObservableCollection<AccountProfile>(store.Profiles);
+                    return;
                 }
+
+                var list = JsonConvert.DeserializeObject<List<AccountProfile>>(json);
+                if (list != null)
+                    this.Profiles = new ObservableCollection<AccountProfile>(list);
             }
             catch (Exception ex)
             {
@@ -64,12 +86,39 @@ namespace XIVLauncher.Accounts
             try
             {
                 Directory.CreateDirectory(AccountProfile.DefaultRoamingBase);
-                File.WriteAllText(StorePath, JsonConvert.SerializeObject(this.Profiles, Formatting.Indented));
+                var store = new ProfileStore { Enabled = this.Enabled, Profiles = this.Profiles.ToList() };
+                File.WriteAllText(StorePath, JsonConvert.SerializeObject(store, Formatting.Indented));
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "[PROFILES] Failed to save account profiles");
             }
+        }
+
+        /// <summary>
+        /// XIVLauncher の保存済みアカウント(accountsList.json)からプロファイルを取り込む。
+        /// 既に同名のプロファイルがある場合はスキップする。追加した件数を返す。
+        /// </summary>
+        public int ImportFromSavedAccounts(IEnumerable<XivAccount> accounts)
+        {
+            var added = 0;
+            foreach (var account in accounts)
+            {
+                if (account?.UserName == null)
+                    continue;
+
+                var profileName = string.IsNullOrWhiteSpace(account.ChosenCharacterName)
+                                      ? account.UserName
+                                      : account.ChosenCharacterName;
+
+                if (this.Profiles.Any(p => string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                this.Profiles.Add(new AccountProfile { Name = profileName });
+                added++;
+            }
+
+            return added;
         }
 
         /// <summary>現在実行中の XIVLauncher 実行ファイルのパス。</summary>
