@@ -46,7 +46,32 @@ public static class DalamudBranchMeta
 
     public static async Task<IEnumerable<Branch>> FetchBranchesAsync(HttpClient client)
     {
-        var json = await client.GetStringAsync("https://kamori.goats.dev/Dalamud/Release/Meta");
+        var branches = new List<Branch>();
+
+        // 公式 kamori のブランチ一覧。
+        branches.AddRange(await FetchFromAsync(client, DistributionConfig.OfficialReleaseBase + "Meta").ConfigureAwait(false));
+
+        // 自前サーバのブランチ一覧をマージ(設定があり、到達できる場合のみ)。
+        // 自前サーバが不通でも公式一覧は表示できるよう、失敗は握り潰す。
+        var customMetaUrl = DistributionConfig.CustomMetaUrl;
+        if (!string.IsNullOrEmpty(customMetaUrl))
+        {
+            try
+            {
+                branches.AddRange(await FetchFromAsync(client, customMetaUrl).ConfigureAwait(false));
+            }
+            catch
+            {
+                // 自前 Meta 取得失敗は無視(公式分のみ返す)。
+            }
+        }
+
+        return branches;
+    }
+
+    private static async Task<IEnumerable<Branch>> FetchFromAsync(HttpClient client, string url)
+    {
+        var json = await client.GetStringAsync(url).ConfigureAwait(false);
         var dict = JsonSerializer.Deserialize<Dictionary<string, Branch>>(json);
         return dict == null ? throw new Exception("Failed to deserialize branch metadata.") : dict.Values;
     }

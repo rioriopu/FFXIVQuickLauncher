@@ -188,9 +188,12 @@ namespace XIVLauncher.Common.Dalamud
 
             if (!string.IsNullOrEmpty(betaKey) && !string.IsNullOrEmpty(betaKind))
             {
-                var versionInfoJsonStaging = await this.client.GetAsync(DalamudLauncher.REMOTE_BASE + GetBetaTrackName(betaKind)).ConfigureAwait(false);
+                // 自前トラックの時のみ取得先を自前ホスト(GitHub raw 等)へ振り分ける(公式リリースは常に kamori)。
+                var stagingUrl = DistributionConfig.VersionInfoUrlFor(GetBetaTrackName(betaKind));
+                var versionInfoJsonStaging = await this.client.GetAsync(stagingUrl).ConfigureAwait(false);
 
-                if (versionInfoJsonStaging.StatusCode != HttpStatusCode.BadRequest)
+                // 取得成功時のみ採用。未定義トラックは kamori=400、静的ホスト=404 のいずれでも安全に release へフォールバック。
+                if (versionInfoJsonStaging.IsSuccessStatusCode)
                     versionInfoStaging = JsonConvert.DeserializeObject<DalamudVersionInfo>(await versionInfoJsonStaging.Content.ReadAsStringAsync().ConfigureAwait(false));
             }
 

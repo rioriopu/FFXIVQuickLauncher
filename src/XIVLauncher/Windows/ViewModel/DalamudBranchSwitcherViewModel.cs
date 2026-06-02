@@ -45,10 +45,20 @@ namespace XIVLauncher.Windows.ViewModel
             Branches.Clear();
             var allBranches = await DalamudBranchMeta.FetchBranchesAsync(App.HttpClient);
 
+            // 表示ポリシー:
+            //  - 公式トラックは release / stg のみ常時表示(ベータキー不要。key は Meta に含まれて返るため選択だけで適用)。
+            //  - 自前トラックはベータキー必須(入力済みキーと一致した時のみ表示)。
             foreach (var branch in allBranches)
             {
-                if (!branch.Hidden || (branch.Hidden && branch.Key == this.AppliedBetaKey))
+                if (DistributionConfig.IsCustomTrack(branch.Track))
+                {
+                    if (!string.IsNullOrEmpty(branch.Key) && branch.Key == this.AppliedBetaKey)
+                        Branches.Add(branch);
+                }
+                else if (DistributionConfig.IsOfficialVisibleTrack(branch.Track))
+                {
                     Branches.Add(branch);
+                }
             }
 
             SelectedBranch = this.Branches.FirstOrDefault(x => x.Track == App.Settings.DalamudBetaKind && x.Key == App.Settings.DalamudBetaKey) ??
