@@ -18,6 +18,14 @@ namespace XIVLauncher
     public static class AppUtil
     {
         /// <summary>
+        ///     estell 改変ビルドの識別子。バージョンチェック(X-XL-HaveVersion / Velopack)に
+        ///     影響を与えないよう、数値版(VersionPrefix=7.0.21)とは分離して保持し、
+        ///     設定画面・ログ等の表示にのみ付与して estell 版であることを明記する。
+        ///     パッチ当日の Dalamud 配布(estell.N)とは別系統のランチャー改変ビルド番号。
+        /// </summary>
+        public const string EstellVersion = "estell.2";
+
+        /// <summary>
         ///     Gets the git hash value from the assembly
         ///     or null if it cannot be found.
         /// </summary>
@@ -41,9 +49,10 @@ namespace XIVLauncher
 
         public static string GetAssemblyVersion()
         {
-            // estell: InformationalVersion(例 "7.0.20-estell.1+<git hash>")を優先表示し、
-            // estell 独自版であることをエラー報告/設定画面/ログ等に明記する。
-            // 末尾の "+<git hash>" は GetGitHash() で別途表示されるため取り除く。
+            // バージョンチェック(X-XL-HaveVersion ヘッダ / Velopack の版比較)で使われるため、
+            // ここは純粋な数値版(例 "7.0.21")のみを返す。InformationalVersion の
+            // ビルドメタデータ "+<git hash>" は precedence に影響しないが、念のため取り除く。
+            // estell 識別は EstellVersion 定数として別途 UI/ログに付与する。
             var asm = typeof(AppUtil).Assembly;
             var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
             if (!string.IsNullOrEmpty(info))
@@ -55,6 +64,15 @@ namespace XIVLauncher
             var assembly = Assembly.GetExecutingAssembly();
             var fvi = FileVersionInfo.GetVersionInfo(assembly.Location);
             return fvi.FileVersion;
+        }
+
+        /// <summary>
+        ///     表示用のバージョン文字列。数値版に estell 識別子を付与して
+        ///     「7.0.21 (estell.2)」のように UI/ログへ明記する(版チェックには使わない)。
+        /// </summary>
+        public static string GetDisplayVersion()
+        {
+            return $"{GetAssemblyVersion()} ({EstellVersion})";
         }
 
         public static string GetFromResources(string resourceName)

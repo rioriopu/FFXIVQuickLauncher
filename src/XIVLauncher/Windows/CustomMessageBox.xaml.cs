@@ -343,7 +343,7 @@ namespace XIVLauncher.Windows
 
             public Builder WithAppendSettingsDescription(string context)
             {
-                this.WithAppendDescription("\n\nVersion: " + AppUtil.GetAssemblyVersion())
+                this.WithAppendDescription("\n\nVersion: " + AppUtil.GetDisplayVersion())
                     .WithAppendDescription("\nGit Hash: " + AppUtil.GetGitHash())
                     .WithAppendDescription("\nContext: " + context)
                     .WithAppendDescription("\nOS: " + Environment.OSVersion)

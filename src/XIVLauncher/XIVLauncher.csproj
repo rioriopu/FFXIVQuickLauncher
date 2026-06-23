@@ -3,10 +3,10 @@
     <Product>XIVLauncher</Product>
     <AssemblyTitle>XIVLauncher</AssemblyTitle>
     <Description>Custom launcher for the most critically acclaimed MMO.</Description>
-    <VersionPrefix>7.0.20</VersionPrefix>
-    <!-- estell 独自版バージョン。アプリ内/エラー報告/インストーラに明記される。
-         パッチ当日の Dalamud 配布(estell.N)とは別系統で、ランチャー改変ビルドの番号。 -->
-    <VersionSuffix>estell.1</VersionSuffix>
+    <!-- バージョンチェック対策: プレリリース表記(-estell.N)は semver 上で 7.0.20 より
+         低く評価されるため、数値そのものを n+1(7.0.21)へ上げる。estell 識別は
+         AppUtil.EstellVersion(別定数)でUI/ログに明記し、版の precedence には影響させない。 -->
+    <VersionPrefix>7.0.21</VersionPrefix>
   </PropertyGroup>
 
   <PropertyGroup>

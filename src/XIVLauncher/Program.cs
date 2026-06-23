@@ -23,7 +23,7 @@ public static class Program
                 Environment.GetCommandLineArgs());
 
             Log.Information("========================================================");
-            Log.Information("Starting a session(v{Version} - {Hash})", AppUtil.GetAssemblyVersion(), AppUtil.GetGitHash());
+            Log.Information("Starting a session(v{Version} - {Hash})", AppUtil.GetDisplayVersion(), AppUtil.GetGitHash());
 
             SerilogEventSink.Instance.LogLine += OnSerilogLogLine;
         }

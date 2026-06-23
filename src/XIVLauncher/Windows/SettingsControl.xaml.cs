@@ -84,7 +84,8 @@ namespace XIVLauncher.Windows
 
             DpiAwarenessComboBox.SelectedIndex = (int) App.Settings.DpiAwareness.GetValueOrDefault(DpiAwareness.Unaware);
 
-            VersionLabel.Text += " - v" + AppUtil.GetAssemblyVersion() + " - " + AppUtil.GetGitHash() + " - " + Environment.Version;
+            // estell: 表示用は数値版 + estell 識別子(例 "7.0.21 (estell.2)")で明記する。
+            VersionLabel.Text += " - v" + AppUtil.GetDisplayVersion() + " - " + AppUtil.GetGitHash() + " - " + Environment.Version;
 
             var val = (decimal) App.Settings.SpeedLimitBytes / MathHelpers.BYTES_TO_MB;
 
