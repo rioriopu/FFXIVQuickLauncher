@@ -4,6 +4,9 @@
     <AssemblyTitle>XIVLauncher</AssemblyTitle>
     <Description>Custom launcher for the most critically acclaimed MMO.</Description>
     <VersionPrefix>7.0.20</VersionPrefix>
+    <!-- estell 独自版バージョン。アプリ内/エラー報告/インストーラに明記される。
+         パッチ当日の Dalamud 配布(estell.N)とは別系統で、ランチャー改変ビルドの番号。 -->
+    <VersionSuffix>estell.1</VersionSuffix>
   </PropertyGroup>
 
   <PropertyGroup>

@@ -41,6 +41,17 @@ namespace XIVLauncher
 
         public static string GetAssemblyVersion()
         {
+            // estell: InformationalVersion(例 "7.0.20-estell.1+<git hash>")を優先表示し、
+            // estell 独自版であることをエラー報告/設定画面/ログ等に明記する。
+            // 末尾の "+<git hash>" は GetGitHash() で別途表示されるため取り除く。
+            var asm = typeof(AppUtil).Assembly;
+            var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (!string.IsNullOrEmpty(info))
+            {
+                var plus = info.IndexOf('+');
+                return plus > 0 ? info.Substring(0, plus) : info;
+            }
+
             var assembly = Assembly.GetExecutingAssembly();
             var fvi = FileVersionInfo.GetVersionInfo(assembly.Location);
             return fvi.FileVersion;
