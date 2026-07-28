@@ -19,11 +19,11 @@ namespace XIVLauncher
     {
         /// <summary>
         ///     estell 改変ビルドの識別子。バージョンチェック(X-XL-HaveVersion / Velopack)に
-        ///     影響を与えないよう、数値版(VersionPrefix=7.0.21)とは分離して保持し、
+        ///     影響を与えないよう、数値版(XIVLauncher.csproj の VersionPrefix)とは分離して保持し、
         ///     設定画面・ログ等の表示にのみ付与して estell 版であることを明記する。
         ///     パッチ当日の Dalamud 配布(estell.N)とは別系統のランチャー改変ビルド番号。
         /// </summary>
-        public const string EstellVersion = "estell.2";
+        public const string EstellVersion = "estell.3";
 
         /// <summary>
         ///     Gets the git hash value from the assembly

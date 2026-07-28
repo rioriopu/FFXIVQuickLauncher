@@ -3,10 +3,10 @@
     <Product>XIVLauncher</Product>
     <AssemblyTitle>XIVLauncher</AssemblyTitle>
     <Description>Custom launcher for the most critically acclaimed MMO.</Description>
-    <!-- バージョンチェック対策: プレリリース表記(-estell.N)は semver 上で 7.0.20 より
-         低く評価されるため、数値そのものを n+1(7.0.21)へ上げる。estell 識別は
+    <!-- バージョンチェック対策: プレリリース表記(-estell.N)は semver 上で元の版より
+         低く評価されるため、数値そのものを n+1 へ上げる。estell 識別は
          AppUtil.EstellVersion(別定数)でUI/ログに明記し、版の precedence には影響させない。 -->
-    <VersionPrefix>7.0.21</VersionPrefix>
+    <VersionPrefix>7.0.22</VersionPrefix>
   </PropertyGroup>
 
   <PropertyGroup>
