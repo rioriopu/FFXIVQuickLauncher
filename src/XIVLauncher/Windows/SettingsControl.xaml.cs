@@ -141,6 +141,14 @@ namespace XIVLauncher.Windows
             PlatformHelpers.OpenBrowser("https://github.com/goaaats/FFXIVQuickLauncher");
         }
 
+        /// <summary>
+        ///     estell 独自: 寄付タブの Patreon ボタン。既定のブラウザで支援ページを開く。
+        /// </summary>
+        private void PatreonButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            PlatformHelpers.OpenBrowser("https://www.patreon.com/SuppotToEstell?utm_campaign=creatorshare_creator");
+        }
+
         private void BackupToolButton_OnClick(object sender, RoutedEventArgs e)
         {
             Process.Start(Path.Combine(ViewModel.GamePath, "boot", "ffxivconfig64.exe"));

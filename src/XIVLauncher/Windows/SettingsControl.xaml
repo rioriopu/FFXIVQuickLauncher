@@ -372,6 +372,38 @@
                     </Grid>
                 </ScrollViewer>
             </TabItem>
+            <!-- estell 独自: 寄付タブ -->
+            <TabItem Header="寄付">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10,10,10,0">
+                        <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top"
+                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                   FontSize="16" FontWeight="Bold"
+                                   Text="estell への支援について" />
+                        <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top"
+                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                   TextWrapping="Wrap" Margin="0,8,0,0" MaxWidth="620"
+                                   Text="estell 版ランチャーと Dalamud の開発・パッチ当日の対応を続けていくために、支援を受け付けています。支援は任意です。ランチャーの機能に制限はありません。" />
+                        <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top"
+                                   Foreground="DarkGray" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,8,0,0" MaxWidth="620"
+                                   Text="下のボタンを押すと、既定のブラウザで Patreon のページが開きます。" />
+
+                        <Button Style="{DynamicResource MaterialDesignRaisedButton}"
+                                HorizontalAlignment="Left"
+                                x:Name="PatreonButton" Click="PatreonButton_OnClick" Margin="0,16,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Heart" VerticalAlignment="Center" />
+                                <TextBlock Margin="8 0 0 0" VerticalAlignment="Center">Patreon で支援する</TextBlock>
+                            </StackPanel>
+                        </Button>
+
+                        <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top"
+                                   Foreground="DarkGray" FontSize="11" Margin="0,10,0,0"
+                                   Text="https://www.patreon.com/SuppotToEstell" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
         </dragablz:TabablzControl>
         <Button Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
                 ToolTip="{Binding OpenPluginsFolderLoc}" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,60,10"
