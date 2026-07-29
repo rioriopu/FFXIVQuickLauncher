@@ -21,6 +21,7 @@ param(
     [string]$VpkDir     = 'C:\Tools\estell-vpk',
     [string]$OverlayZip = 'C:\Tools\patchsrc\overlay.zip',
     [string]$PatcherPrj = 'C:\Tools\EstellPatcher',
+    [string]$SetupPrj   = 'C:\Tools\EstellSetup',
 
     # 指定するとフルインストーラ(vpk)の生成を省略する
     [switch]$SkipSetup
@@ -93,13 +94,33 @@ try {
 } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { throw 'パッチ適用EXE のビルドに失敗' }
 
+# --- 8) フルインストーラEXE(バックアップ付き) --------------------------
+# vpk が生成した Setup.exe を埋め込むので、必ず手順 5 の後に実行する。
+if (-not $SkipSetup) {
+    Step 8 'estell-xivlauncher-setup.exe をビルド'
+    Push-Location $SetupPrj
+    try {
+        dotnet publish -c Release -r win-x64 --self-contained `
+            -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
+            -o (Join-Path $SetupPrj 'publish')
+    } finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0) { throw 'フルインストーラEXE のビルドに失敗' }
+}
+
 Write-Host "`n=== 完成 ===" -ForegroundColor Green
-if (-not $SkipSetup) { Get-ChildItem (Join-Path $VpkDir 'XIVLauncher-win-Setup.exe') | Select-Object Name, Length }
+if (-not $SkipSetup) {
+    Get-ChildItem (Join-Path $VpkDir 'XIVLauncher-win-Setup.exe') | Select-Object Name, Length
+    Get-ChildItem (Join-Path $SetupPrj 'publish\estell-xivlauncher-setup.exe') | Select-Object Name, Length
+}
 Get-ChildItem (Join-Path $PatcherPrj 'publish\estell-xivlauncher-patch.exe') | Select-Object Name, Length
 Write-Host @"
 
 次の手順:
   gh release create xivlauncher-$Version --repo rioriopu/PrivateReleaseRepo ``
-    --title "XIVLauncher estell $Version" --notes "..." ``
-    "$VpkDir\XIVLauncher-win-Setup.exe" "$PatcherPrj\publish\estell-xivlauncher-patch.exe"
+    --title "XIVLauncher estell $Version" --notes-file <notes.md> ``
+    "$SetupPrj\publish\estell-xivlauncher-setup.exe" ``
+    "$PatcherPrj\publish\estell-xivlauncher-patch.exe"
+
+  ※ vpk 素の Setup.exe($VpkDir\XIVLauncher-win-Setup.exe)は
+     estell-xivlauncher-setup.exe に埋め込まれているので、単体配布は不要。
 "@

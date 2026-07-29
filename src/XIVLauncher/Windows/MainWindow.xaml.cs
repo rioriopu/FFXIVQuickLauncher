@@ -87,7 +87,9 @@ namespace XIVLauncher.Windows
                 }
             };
 
-            Title += " " + AppUtil.GetGitHash();
+            // 本家は git hash を出すが、estell 版はどのビルドを使っているかが一目で分かるよう
+            // バージョン表記(例: "Estell Ver - 7.0.22 (estell.3)")に置き換える。
+            Title += " Estell Ver - " + AppUtil.GetDisplayVersion();
 
             if (AppUtil.IsDisableUpdates)
             {
