@@ -56,13 +56,6 @@ namespace XIVLauncher.Settings
         /// </summary>
         bool? ExperimentalIgnoreMaintenance { get; set; }
 
-        /// <summary>
-        ///     ゲーム起動時に Dalamud を注入するかどうか。
-        ///     既定は true。false にすると InGameAddonEnabled の設定に関わらず注入しない。
-        ///     素のクライアント挙動と比較したいときに使う。
-        /// </summary>
-        bool? ExperimentalInjectDalamud { get; set; }
-
         PreserveWindowPosition.WindowPlacement? MainWindowPlacement { get; set; }
 
         #endregion

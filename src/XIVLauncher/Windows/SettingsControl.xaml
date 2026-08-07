@@ -388,11 +388,9 @@
                                    TextWrapping="Wrap" Margin="24,2,0,0" MaxWidth="600"
                                    Text="メンテナンス(ゲート閉鎖)の判定を無視してゲームを起動します。ログインはできませんが、タイトル画面までは到達するため、パッチ直後に Dalamud が正しく動作するかをメンテナンス中に確認できます。" />
 
-                        <CheckBox x:Name="InjectDalamudCheckBox" Margin="0,14,0,0"
-                                  Content="Dalamud を注入する" />
                         <TextBlock HorizontalAlignment="Left" Foreground="DarkGray" FontSize="11"
-                                   TextWrapping="Wrap" Margin="24,2,0,0" MaxWidth="600"
-                                   Text="外すと、In-Game タブの設定に関わらず Dalamud を注入せずにゲームを起動します。不具合が Dalamud 由来かどうかを切り分けるときに使います。" />
+                                   TextWrapping="Wrap" Margin="0,20,0,0" MaxWidth="620"
+                                   Text="※ Dalamud やプラグインを無効にして起動したい場合は、ログインボタン横のメニューから「Dalamud なしで起動」「プラグインなしで起動」を選んでください。" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

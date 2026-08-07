@@ -1080,13 +1080,6 @@ namespace XIVLauncher.Windows.ViewModel
 
         public async Task<Process> StartGameAndAddon(Launcher.LoginResult loginResult, bool isSteam, bool forceNoDalamud, bool noThird, bool noPlugins)
         {
-            // estell 試験機能: 「Dalamud を注入する」を外している場合は、
-            // InGameAddonEnabled の設定に関わらず注入しない(素のクライアント挙動の比較用)。
-            if (App.Settings.ExperimentalInjectDalamud == false)
-            {
-                Log.Warning("[ESTELL] ExperimentalInjectDalamud is disabled - launching without Dalamud");
-                forceNoDalamud = true;
-            }
 
             // [estell] アカウント別プロファイル(ログイン押下時の処理):
             // ログインID(UserName)と同名の(非Default)プロファイルがあれば、今回のゲーム起動を

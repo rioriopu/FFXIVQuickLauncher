@@ -80,9 +80,8 @@ namespace XIVLauncher.Windows
 
             OtpAlwaysOnTopCheckBox.IsChecked = App.Settings.OtpAlwaysOnTopEnabled;
 
-            // estell 試験機能。注入は既定 ON、メンテ無視は既定 OFF。
+            // estell 試験機能(既定 OFF)
             IgnoreMaintenanceCheckBox.IsChecked = App.Settings.ExperimentalIgnoreMaintenance ?? false;
-            InjectDalamudCheckBox.IsChecked = App.Settings.ExperimentalInjectDalamud ?? true;
 
             LaunchArgsTextBox.Text = App.Settings.AdditionalLaunchArgs;
 
@@ -129,7 +128,6 @@ namespace XIVLauncher.Windows
 
             // estell 試験機能
             App.Settings.ExperimentalIgnoreMaintenance = IgnoreMaintenanceCheckBox.IsChecked == true;
-            App.Settings.ExperimentalInjectDalamud = InjectDalamudCheckBox.IsChecked == true;
 
             App.Settings.AdditionalLaunchArgs = LaunchArgsTextBox.Text;
 
