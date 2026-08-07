@@ -372,6 +372,30 @@
                     </Grid>
                 </ScrollViewer>
             </TabItem>
+            <!-- estell 独自: 試験機能タブ -->
+            <TabItem Header="試験機能">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10,10,10,0">
+                        <TextBlock HorizontalAlignment="Left" Foreground="{DynamicResource MaterialDesignBody}"
+                                   FontSize="16" FontWeight="Bold" Text="試験機能" />
+                        <TextBlock HorizontalAlignment="Left" Foreground="DarkGray" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,6,0,0" MaxWidth="620"
+                                   Text="動作検証のための機能です。通常のプレイでは変更しないでください。予告なく仕様が変わることがあります。" />
+
+                        <CheckBox x:Name="IgnoreMaintenanceCheckBox" Margin="0,16,0,0"
+                                  Content="メンテナンス中でも起動する" />
+                        <TextBlock HorizontalAlignment="Left" Foreground="DarkGray" FontSize="11"
+                                   TextWrapping="Wrap" Margin="24,2,0,0" MaxWidth="600"
+                                   Text="メンテナンス(ゲート閉鎖)の判定を無視してゲームを起動します。ログインはできませんが、タイトル画面までは到達するため、パッチ直後に Dalamud が正しく動作するかをメンテナンス中に確認できます。" />
+
+                        <CheckBox x:Name="InjectDalamudCheckBox" Margin="0,14,0,0"
+                                  Content="Dalamud を注入する" />
+                        <TextBlock HorizontalAlignment="Left" Foreground="DarkGray" FontSize="11"
+                                   TextWrapping="Wrap" Margin="24,2,0,0" MaxWidth="600"
+                                   Text="外すと、In-Game タブの設定に関わらず Dalamud を注入せずにゲームを起動します。不具合が Dalamud 由来かどうかを切り分けるときに使います。" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
             <!-- estell 独自: 寄付タブ -->
             <TabItem Header="寄付">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">

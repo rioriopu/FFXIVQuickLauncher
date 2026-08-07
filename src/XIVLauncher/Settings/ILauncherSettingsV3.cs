@@ -47,6 +47,22 @@ namespace XIVLauncher.Settings
         string? DalamudBetaKind { get; set; }
         string? DalamudBetaKey { get; set; }
 
+        // --- estell 試験機能 ---------------------------------------------------
+
+        /// <summary>
+        ///     メンテナンス中(ゲート閉鎖)でもゲームの起動を続行する。
+        ///     ログインはできないが、タイトル画面まで到達するので
+        ///     パッチ直後に Dalamud が正しく動くかを検証できる。
+        /// </summary>
+        bool? ExperimentalIgnoreMaintenance { get; set; }
+
+        /// <summary>
+        ///     ゲーム起動時に Dalamud を注入するかどうか。
+        ///     既定は true。false にすると InGameAddonEnabled の設定に関わらず注入しない。
+        ///     素のクライアント挙動と比較したいときに使う。
+        /// </summary>
+        bool? ExperimentalInjectDalamud { get; set; }
+
         PreserveWindowPosition.WindowPlacement? MainWindowPlacement { get; set; }
 
         #endregion

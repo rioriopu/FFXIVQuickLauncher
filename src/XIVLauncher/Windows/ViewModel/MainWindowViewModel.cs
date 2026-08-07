@@ -317,6 +317,15 @@ namespace XIVLauncher.Windows.ViewModel
 
         private async Task<bool> CheckGateStatus()
         {
+            // estell 試験機能: メンテナンス中でも起動を続行する。
+            // ログインサーバーが生きていればタイトル画面までは到達するので、
+            // パッチ直後に Dalamud が正しく動くかをメンテ中に検証できる。
+            if (App.Settings.ExperimentalIgnoreMaintenance == true)
+            {
+                Log.Warning("[ESTELL] ExperimentalIgnoreMaintenance is enabled - skipping gate status check");
+                return true;
+            }
+
             GateStatus gateStatus = null;
 
             try
@@ -1071,6 +1080,14 @@ namespace XIVLauncher.Windows.ViewModel
 
         public async Task<Process> StartGameAndAddon(Launcher.LoginResult loginResult, bool isSteam, bool forceNoDalamud, bool noThird, bool noPlugins)
         {
+            // estell 試験機能: 「Dalamud を注入する」を外している場合は、
+            // InGameAddonEnabled の設定に関わらず注入しない(素のクライアント挙動の比較用)。
+            if (App.Settings.ExperimentalInjectDalamud == false)
+            {
+                Log.Warning("[ESTELL] ExperimentalInjectDalamud is disabled - launching without Dalamud");
+                forceNoDalamud = true;
+            }
+
             // [estell] アカウント別プロファイル(ログイン押下時の処理):
             // ログインID(UserName)と同名の(非Default)プロファイルがあれば、今回のゲーム起動を
             // そのプロファイルのフォルダ「完全独立(フルセット)」で行う。
