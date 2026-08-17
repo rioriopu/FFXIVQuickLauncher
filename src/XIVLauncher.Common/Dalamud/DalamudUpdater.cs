@@ -188,17 +188,103 @@ namespace XIVLauncher.Common.Dalamud
 
             if (!string.IsNullOrEmpty(betaKey) && !string.IsNullOrEmpty(betaKind))
             {
-                // 自前トラックの時のみ取得先を自前ホスト(GitHub raw 等)へ振り分ける(公式リリースは常に kamori)。
-                var stagingUrl = DistributionConfig.VersionInfoUrlFor(GetBetaTrackName(betaKind));
-                var versionInfoJsonStaging = await this.client.GetAsync(stagingUrl).ConfigureAwait(false);
+                var trackName = GetBetaTrackName(betaKind);
 
-                // 取得成功時のみ採用。未定義トラックは kamori=400、静的ホスト=404 のいずれでも安全に release へフォールバック。
-                if (versionInfoJsonStaging.IsSuccessStatusCode)
-                    versionInfoStaging = JsonConvert.DeserializeObject<DalamudVersionInfo>(await versionInfoJsonStaging.Content.ReadAsStringAsync().ConfigureAwait(false));
+                // 自前トラックの時のみ取得先を自前ホスト(GitHub raw 等)へ振り分ける(公式リリースは常に kamori)。
+                var stagingUrl = DistributionConfig.VersionInfoUrlFor(trackName);
+
+                try
+                {
+                    var versionInfoJsonStaging = await this.client.GetAsync(stagingUrl).ConfigureAwait(false);
+
+                    // 取得成功時のみ採用。未定義トラックは kamori=400、静的ホスト=404 のいずれでも安全に release へフォールバック。
+                    if (versionInfoJsonStaging.IsSuccessStatusCode)
+                    {
+                        var json = await versionInfoJsonStaging.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        versionInfoStaging = JsonConvert.DeserializeObject<DalamudVersionInfo>(json);
+
+                        // [estell] 次回、配布元が落ちていても使えるようにキャッシュしておく。
+                        SaveTrackCache(trackName, json);
+                    }
+                    else
+                    {
+                        Log.Warning("[DUPDATE] Track manifest returned {Status}, trying cache", versionInfoJsonStaging.StatusCode);
+                        versionInfoStaging = LoadTrackCache(trackName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // [estell] 配布元(GitHub raw 等)の障害・タイムアウト時。ここで公式 release へ
+                    // フォールバックすると、別トラックの Dalamud を落としに行って失敗し起動できない。
+                    // 直近に取得できたマニフェストが残っていればそれを使う。
+                    Log.Warning(ex, "[DUPDATE] Could not fetch track manifest, trying cache");
+                    versionInfoStaging = LoadTrackCache(trackName);
+                }
             }
 
             return (versionInfoRelease, versionInfoStaging);
         }
+
+        /// <summary>[estell] 取得できたトラックマニフェストを保存する。</summary>
+        private void SaveTrackCache(string trackName, string json)
+        {
+            try
+            {
+                var file = GetTrackCacheFile(trackName);
+                file.Directory?.Create();
+                File.WriteAllText(file.FullName, json);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[DUPDATE] Could not save track cache");
+            }
+        }
+
+        /// <summary>
+        ///     [estell] 保存済みのトラックマニフェストを読む。配布元が落ちている間の代替。
+        ///     対象バージョンが実際にローカルへ導入済みのときだけ採用する
+        ///     (未導入のものを返すと結局ダウンロードに行って失敗するため)。
+        /// </summary>
+        private DalamudVersionInfo? LoadTrackCache(string trackName)
+        {
+            try
+            {
+                var file = GetTrackCacheFile(trackName);
+
+                if (!file.Exists)
+                {
+                    Log.Warning("[DUPDATE] No cached manifest for track {Track}", trackName);
+                    return null;
+                }
+
+                var info = JsonConvert.DeserializeObject<DalamudVersionInfo>(File.ReadAllText(file.FullName));
+
+                if (info == null)
+                    return null;
+
+                var installed = new DirectoryInfo(
+                    Path.Combine(this.addonDirectory.FullName, "Hooks", info.AssemblyVersion));
+
+                if (!installed.Exists || !IsIntegrity(installed))
+                {
+                    Log.Warning("[DUPDATE] Cached manifest points to {Version}, but it is not installed - ignoring cache",
+                                info.AssemblyVersion);
+                    return null;
+                }
+
+                Log.Information("[DUPDATE] Using cached manifest for track {Track} ({Version}) - distribution host unreachable",
+                                trackName, info.AssemblyVersion);
+                return info;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[DUPDATE] Could not load track cache");
+                return null;
+            }
+        }
+
+        private FileInfo GetTrackCacheFile(string trackName) =>
+            new(Path.Combine(this.addonDirectory.FullName, "trackCache", trackName + ".json"));
 
         private async Task UpdateDalamud(string? betaKind, string? betaKey)
         {

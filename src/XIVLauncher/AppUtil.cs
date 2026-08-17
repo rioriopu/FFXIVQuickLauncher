@@ -23,7 +23,7 @@ namespace XIVLauncher
         ///     設定画面・ログ等の表示にのみ付与して estell 版であることを明記する。
         ///     パッチ当日の Dalamud 配布(estell.N)とは別系統のランチャー改変ビルド番号。
         /// </summary>
-        public const string EstellVersion = "estell.7";
+        public const string EstellVersion = "estell.8";
 
         /// <summary>
         ///     Gets the git hash value from the assembly
