@@ -24,6 +24,24 @@ namespace XIVLauncher.Windows
             {
                 this.Model.AppliedBetaKey = App.Settings.DalamudBetaKey;
                 await this.Model.FetchBranchesAsync();
+
+                // [estell] 配布元の一部に繋がらないと一覧が欠けたまま表示される。
+                // 何も知らせないと「ブランチが消えた」と誤解し、release へ切り替えて
+                // しまうおそれがあるため明示する。
+                if (this.Model.HasIncompleteBranchList)
+                {
+                    new CustomMessageBox.Builder()
+                        .WithCaption("XIVLauncher - Dalamud Branch Switcher")
+                        .WithText("一部の配布元に接続できなかったため、ブランチ一覧が不完全です。")
+                        .WithDescription(
+                            "表示されていないブランチがある可能性があります。\n" +
+                            "現在の設定は変更していません。時間をおいて開き直してください。\n\n" +
+                            "この状態で別のブランチへ切り替えると、元のブランチに戻せなくなることがあります。")
+                        .WithImage(MessageBoxImage.Warning)
+                        .WithButtons(MessageBoxButton.OK)
+                        .WithParentWindow(this)
+                        .Show();
+                }
             }
             catch (Exception ex)
             {

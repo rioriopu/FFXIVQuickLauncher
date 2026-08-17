@@ -44,21 +44,40 @@ public static class DalamudBranchMeta
         public string DisplayNameWithAvailability => !this.IsApplicableForCurrentGameVer.GetValueOrDefault(false) ? $"{this.DisplayName} (unavailable)" : this.DisplayName;
     }
 
-    public static async Task<IEnumerable<Branch>> FetchBranchesAsync(HttpClient client)
+    /// <summary>
+    ///     ブランチ一覧を取得する。取得できたものだけを返し、片方が落ちていても例外にしない。
+    /// </summary>
+    /// <returns>
+    ///     branches: 取得できたブランチ / officialOk: 公式 Meta が取れたか / customOk: 自前 Meta が取れたか。
+    ///     呼び出し側は取得できなかった側のトラックを「消えた」と扱ってはいけない。
+    /// </returns>
+    public static async Task<(List<Branch> Branches, bool OfficialOk, bool CustomOk)> FetchBranchesDetailedAsync(HttpClient client)
     {
         var branches = new List<Branch>();
+        var officialOk = false;
+        var customOk = false;
 
         // 公式 kamori のブランチ一覧。
-        branches.AddRange(await FetchFromAsync(client, DistributionConfig.OfficialReleaseBase + "Meta").ConfigureAwait(false));
+        // [estell] 本家はここを保護しておらず、kamori が落ちると例外がそのまま伝播して
+        // ブランチ切替画面自体が開けなくなっていた(2026-08-17 の GitHub 障害時に発生)。
+        try
+        {
+            branches.AddRange(await FetchFromAsync(client, DistributionConfig.OfficialReleaseBase + "Meta").ConfigureAwait(false));
+            officialOk = true;
+        }
+        catch
+        {
+            // 公式 Meta 取得失敗は無視(自前分だけでも表示する)。
+        }
 
         // 自前サーバのブランチ一覧をマージ(設定があり、到達できる場合のみ)。
-        // 自前サーバが不通でも公式一覧は表示できるよう、失敗は握り潰す。
         var customMetaUrl = DistributionConfig.CustomMetaUrl;
         if (!string.IsNullOrEmpty(customMetaUrl))
         {
             try
             {
                 branches.AddRange(await FetchFromAsync(client, customMetaUrl).ConfigureAwait(false));
+                customOk = true;
             }
             catch
             {
@@ -66,8 +85,11 @@ public static class DalamudBranchMeta
             }
         }
 
-        return branches;
+        return (branches, officialOk, customOk);
     }
+
+    public static async Task<IEnumerable<Branch>> FetchBranchesAsync(HttpClient client)
+        => (await FetchBranchesDetailedAsync(client).ConfigureAwait(false)).Branches;
 
     private static async Task<IEnumerable<Branch>> FetchFromAsync(HttpClient client, string url)
     {
