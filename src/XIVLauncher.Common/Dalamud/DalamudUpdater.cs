@@ -179,10 +179,33 @@ namespace XIVLauncher.Common.Dalamud
                 NoCache = true
             };
 
-            var versionInfoResponse = await this.client.SendAsync(message).ConfigureAwait(false);
-            versionInfoResponse.EnsureSuccessStatusCode();
+            DalamudVersionInfo versionInfoRelease;
 
-            var versionInfoRelease = JsonConvert.DeserializeObject<DalamudVersionInfo>(await versionInfoResponse.Content.ReadAsStringAsync());
+            try
+            {
+                var versionInfoResponse = await this.client.SendAsync(message).ConfigureAwait(false);
+                versionInfoResponse.EnsureSuccessStatusCode();
+                versionInfoRelease = JsonConvert.DeserializeObject<DalamudVersionInfo>(
+                    await versionInfoResponse.Content.ReadAsStringAsync().ConfigureAwait(false));
+            }
+            catch (Exception ex)
+            {
+                // [estell] kamori が落ちていると、ここで例外→更新処理ごと停止していた。
+                // 自前 VPS のミラー(cron で定期同期)へ迂回する。
+                var mirror = DistributionConfig.MirrorVersionInfoUrlFor("release");
+
+                if (string.IsNullOrEmpty(mirror))
+                    throw;
+
+                Log.Warning(ex, "[DUPDATE] Official release manifest unreachable, falling back to mirror");
+
+                var mirrorResponse = await this.client.GetAsync(mirror).ConfigureAwait(false);
+                mirrorResponse.EnsureSuccessStatusCode();
+                versionInfoRelease = JsonConvert.DeserializeObject<DalamudVersionInfo>(
+                    await mirrorResponse.Content.ReadAsStringAsync().ConfigureAwait(false));
+
+                Log.Information("[DUPDATE] Using mirrored release manifest ({Version})", versionInfoRelease?.AssemblyVersion);
+            }
 
             DalamudVersionInfo? versionInfoStaging = null;
 
@@ -216,13 +239,50 @@ namespace XIVLauncher.Common.Dalamud
                 {
                     // [estell] 配布元(GitHub raw 等)の障害・タイムアウト時。ここで公式 release へ
                     // フォールバックすると、別トラックの Dalamud を落としに行って失敗し起動できない。
-                    // 直近に取得できたマニフェストが残っていればそれを使う。
-                    Log.Warning(ex, "[DUPDATE] Could not fetch track manifest, trying cache");
-                    versionInfoStaging = LoadTrackCache(trackName);
+                    // ミラー → ローカルキャッシュ の順で粘る。
+                    Log.Warning(ex, "[DUPDATE] Could not fetch track manifest, trying mirror");
+
+                    versionInfoStaging = await TryFetchFromMirror(trackName).ConfigureAwait(false)
+                                         ?? LoadTrackCache(trackName);
                 }
             }
 
             return (versionInfoRelease, versionInfoStaging);
+        }
+
+        /// <summary>
+        ///     [estell] 自前 VPS のミラーからトラックマニフェストを取る。
+        ///     取得できたらキャッシュも更新する。失敗時は null。
+        /// </summary>
+        private async Task<DalamudVersionInfo?> TryFetchFromMirror(string trackName)
+        {
+            var mirror = DistributionConfig.MirrorVersionInfoUrlFor(trackName);
+
+            if (string.IsNullOrEmpty(mirror))
+                return null;
+
+            try
+            {
+                var response = await this.client.GetAsync(mirror).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                    return null;
+
+                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var info = JsonConvert.DeserializeObject<DalamudVersionInfo>(json);
+
+                if (info == null)
+                    return null;
+
+                Log.Information("[DUPDATE] Using mirrored manifest for track {Track} ({Version})", trackName, info.AssemblyVersion);
+                SaveTrackCache(trackName, json);
+                return info;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[DUPDATE] Mirror unreachable for track {Track}", trackName);
+                return null;
+            }
         }
 
         /// <summary>[estell] 取得できたトラックマニフェストを保存する。</summary>

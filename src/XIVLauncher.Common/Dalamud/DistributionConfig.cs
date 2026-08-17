@@ -25,6 +25,38 @@ public static class DistributionConfig
     public const string OfficialReleaseBase = "https://kamori.goats.dev/Dalamud/Release/";
 
     /// <summary>
+    /// [estell] 自前 VPS のミラーベース URL(末尾 '/' 込み)。空にするとミラーを使わない。
+    /// kamori / GitHub raw が落ちたときの迂回先。中身は cron で定期同期している
+    /// (VPS: /home/ubuntu/estelld-repo/scripts/mirror-kamori.sh)。
+    /// </summary>
+    public const string MirrorBase = "https://estelldprereleaserepo.net/estell/";
+
+    /// <summary>[estell] ミラーが設定されているか。</summary>
+    public static bool HasMirror => !string.IsNullOrEmpty(MirrorBase);
+
+    /// <summary>
+    /// [estell] 指定トラックの VersionInfo をミラーから取る URL。ミラー未設定なら null。
+    /// 静的ホストなのでクエリを使わず、同期スクリプトが付けたファイル名で参照する。
+    /// </summary>
+    public static string? MirrorVersionInfoUrlFor(string track)
+    {
+        if (!HasMirror || string.IsNullOrEmpty(track))
+            return null;
+
+        return IsCustomTrack(track)
+                   ? $"{MirrorBase}dalamud/version"
+                   : $"{MirrorBase}kamori/Release/VersionInfo.{track}.json";
+    }
+
+    /// <summary>[estell] 公式 Meta(ブランチ一覧)のミラー URL。</summary>
+    public static string? MirrorOfficialMetaUrl =>
+        HasMirror ? $"{MirrorBase}kamori/Meta" : null;
+
+    /// <summary>[estell] 自前 Meta のミラー URL。</summary>
+    public static string? MirrorCustomMetaUrl =>
+        HasMirror ? $"{MirrorBase}dalamud/meta.json" : null;
+
+    /// <summary>
     /// 自前配信のベース URL(末尾 '/' 込み)。GitHub raw を想定。
     /// 例: https://raw.githubusercontent.com/&lt;user&gt;/&lt;repo&gt;/main/
     /// 空文字にすると自前配信は無効。

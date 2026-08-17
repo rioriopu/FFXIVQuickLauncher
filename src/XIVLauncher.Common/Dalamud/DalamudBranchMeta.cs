@@ -60,32 +60,51 @@ public static class DalamudBranchMeta
         // 公式 kamori のブランチ一覧。
         // [estell] 本家はここを保護しておらず、kamori が落ちると例外がそのまま伝播して
         // ブランチ切替画面自体が開けなくなっていた(2026-08-17 の GitHub 障害時に発生)。
-        try
-        {
-            branches.AddRange(await FetchFromAsync(client, DistributionConfig.OfficialReleaseBase + "Meta").ConfigureAwait(false));
-            officialOk = true;
-        }
-        catch
-        {
-            // 公式 Meta 取得失敗は無視(自前分だけでも表示する)。
-        }
+        // 本家が駄目なら自前 VPS のミラーへ迂回する。
+        officialOk = await TryFetchInto(client, branches,
+                                        DistributionConfig.OfficialReleaseBase + "Meta",
+                                        DistributionConfig.MirrorOfficialMetaUrl).ConfigureAwait(false);
 
         // 自前サーバのブランチ一覧をマージ(設定があり、到達できる場合のみ)。
         var customMetaUrl = DistributionConfig.CustomMetaUrl;
         if (!string.IsNullOrEmpty(customMetaUrl))
         {
-            try
-            {
-                branches.AddRange(await FetchFromAsync(client, customMetaUrl).ConfigureAwait(false));
-                customOk = true;
-            }
-            catch
-            {
-                // 自前 Meta 取得失敗は無視(公式分のみ返す)。
-            }
+            customOk = await TryFetchInto(client, branches,
+                                          customMetaUrl,
+                                          DistributionConfig.MirrorCustomMetaUrl).ConfigureAwait(false);
         }
 
         return (branches, officialOk, customOk);
+    }
+
+    /// <summary>
+    ///     [estell] primary → mirror の順に取得を試み、成功したものを追加する。
+    ///     どちらも駄目なら false(呼び出し側が「一覧が不完全」と判断する)。
+    /// </summary>
+    private static async Task<bool> TryFetchInto(HttpClient client, List<Branch> into, string primaryUrl, string? mirrorUrl)
+    {
+        try
+        {
+            into.AddRange(await FetchFromAsync(client, primaryUrl).ConfigureAwait(false));
+            return true;
+        }
+        catch
+        {
+            // 本命が駄目でもミラーがあれば続行する。
+        }
+
+        if (string.IsNullOrEmpty(mirrorUrl))
+            return false;
+
+        try
+        {
+            into.AddRange(await FetchFromAsync(client, mirrorUrl).ConfigureAwait(false));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static async Task<IEnumerable<Branch>> FetchBranchesAsync(HttpClient client)
