@@ -24,7 +24,13 @@ param(
     [string]$SetupPrj   = 'C:\Tools\EstellSetup',
 
     # 指定するとフルインストーラ(vpk)の生成を省略する
-    [switch]$SkipSetup
+    [switch]$SkipSetup,
+
+    # 指定すると更新フィードの公開まで行う(ランチャーの自動更新はこれを見る)
+    [switch]$PublishFeed,
+
+    # 更新フィードの置き場
+    [string]$FeedRepo = 'rioriopu/estell-launcher-distrib'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,6 +113,45 @@ if (-not $SkipSetup) {
     if ($LASTEXITCODE -ne 0) { throw 'フルインストーラEXE のビルドに失敗' }
 }
 
+# --- 9) 更新フィードの公開 ---------------------------------------------------
+# ランチャーの自動更新はこのフィードを見る。ここを上げ忘れると
+# 利用者側は「更新なし」と判定されて永久に更新されない。
+if ($PublishFeed) {
+    if ($SkipSetup) { throw '-PublishFeed には vpk の出力が必要。-SkipSetup とは併用できない' }
+
+    Step 9 "更新フィードを $FeedRepo へ公開"
+
+    $feedJson = Join-Path $VpkDir 'releases.win.json'
+    if (-not (Test-Path $feedJson)) { throw "releases.win.json が無い。vpk pack の --channel が 'win' か確認すること" }
+
+    # 壊れた JSON を上げると利用者のランチャーが更新を見失う。先に検査する。
+    try { Get-Content $feedJson -Raw | ConvertFrom-Json | Out-Null }
+    catch { throw "releases.win.json が壊れている: $_" }
+
+    $nupkgs = @(Get-ChildItem $VpkDir -Filter *.nupkg)
+    if ($nupkgs.Count -eq 0) { throw 'nupkg が無い。vpk pack が失敗している可能性がある' }
+    Write-Host "  nupkg $($nupkgs.Count) 件 / releases.win.json OK"
+
+    # タグ 'win' を使い回す(Velopack のチャンネル名と一致)。
+    gh release view win --repo $FeedRepo *> $null
+    if ($LASTEXITCODE -ne 0) {
+        gh release create win --repo $FeedRepo --title 'estell launcher feed (win)' `
+            --notes 'Velopack のフィード。estell-build-release.ps1 が自動で更新します。'
+        if ($LASTEXITCODE -ne 0) { throw 'Release の作成に失敗' }
+    }
+
+    # 本体を先に、一覧を最後に上げる。
+    # 逆順だと「一覧には載っているのに本体が無い」瞬間ができる。
+    foreach ($n in $nupkgs) {
+        gh release upload win $n.FullName --clobber --repo $FeedRepo
+        if ($LASTEXITCODE -ne 0) { throw "nupkg のアップロードに失敗: $($n.Name)" }
+    }
+    gh release upload win $feedJson --clobber --repo $FeedRepo
+    if ($LASTEXITCODE -ne 0) { throw 'releases.win.json のアップロードに失敗' }
+
+    Write-Host '  公開しました。VPS へは mirror-to-vps ワークフローが同期します。' -ForegroundColor Green
+}
+
 Write-Host "`n=== 完成 ===" -ForegroundColor Green
 if (-not $SkipSetup) {
     Get-ChildItem (Join-Path $VpkDir 'XIVLauncher-win-Setup.exe') | Select-Object Name, Length
@@ -123,4 +168,7 @@ Write-Host @"
 
   ※ vpk 素の Setup.exe($VpkDir\XIVLauncher-win-Setup.exe)は
      estell-xivlauncher-setup.exe に埋め込まれているので、単体配布は不要。
+
+  ※ ランチャーの自動更新を効かせるには -PublishFeed を付けて実行すること。
+     付けないとフィードが古いままになり、利用者側は「更新なし」と判定される。
 "@

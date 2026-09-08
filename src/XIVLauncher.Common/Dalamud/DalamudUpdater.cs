@@ -171,6 +171,26 @@ namespace XIVLauncher.Common.Dalamud
         private static string GetBetaTrackName(string betaKind) =>
             string.IsNullOrEmpty(betaKind) ? "staging" : betaKind;
 
+        /// <summary>
+        ///     [estell] マニフェスト取得用の GET を作る。中間キャッシュを一切使わせない。
+        ///     配布マニフェストは数百バイトなので、毎回オリジンまで取りに行っても負荷にならない。
+        ///     逆にキャッシュされると更新が届かない利用者が出る。
+        /// </summary>
+        private static HttpRequestMessage NoCacheGet(string url)
+        {
+            var message = new HttpRequestMessage(HttpMethod.Get, url);
+
+            message.Headers.CacheControl = new CacheControlHeaderValue
+            {
+                NoCache = true,
+                NoStore = true,
+                MustRevalidate = true,
+            };
+            message.Headers.Pragma.ParseAdd("no-cache");
+
+            return message;
+        }
+
         private async Task<(DalamudVersionInfo release, DalamudVersionInfo? staging)> GetVersionInfo(string? betaKind, string? betaKey)
         {
             var message = new HttpRequestMessage(HttpMethod.Get, DalamudLauncher.REMOTE_BASE + $"release&bucket={this.RolloutBucket}");
@@ -218,7 +238,12 @@ namespace XIVLauncher.Common.Dalamud
 
                 try
                 {
-                    var versionInfoJsonStaging = await this.client.GetAsync(stagingUrl).ConfigureAwait(false);
+                    // [estell] 公式 release 側と同じくキャッシュを禁止する。
+                    // これを付けないと GitHub raw の CDN(max-age=300)がエッジごとに
+                    // 古いマニフェストを返し、「一部の利用者だけ更新されない」状態になる。
+                    // 実際に 2026-09-08 の配布で 15 分以上 estell.30 が返り続けた。
+                    var versionInfoJsonStaging = await this.client.SendAsync(
+                        NoCacheGet(stagingUrl)).ConfigureAwait(false);
 
                     // 取得成功時のみ採用。未定義トラックは kamori=400、静的ホスト=404 のいずれでも安全に release へフォールバック。
                     if (versionInfoJsonStaging.IsSuccessStatusCode)
@@ -263,7 +288,7 @@ namespace XIVLauncher.Common.Dalamud
 
             try
             {
-                var response = await this.client.GetAsync(mirror).ConfigureAwait(false);
+                var response = await this.client.SendAsync(NoCacheGet(mirror)).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                     return null;

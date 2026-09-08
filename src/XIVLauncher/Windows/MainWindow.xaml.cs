@@ -406,6 +406,12 @@ namespace XIVLauncher.Windows
             PlatformHelpers.OpenBrowser("https://is.xivup.com/");
         }
 
+        /// <summary>[estell] 寄付ページを開く。設定画面の寄付タブと同じ遷移先。</summary>
+        private void DonateButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            PlatformHelpers.OpenBrowser("https://www.patreon.com/SuppotToEstell?utm_campaign=creatorshare_creator");
+        }
+
         private void QueueButton_OnClick(object sender, RoutedEventArgs e)
         {
             if (_maintenanceQueueTimer == null)

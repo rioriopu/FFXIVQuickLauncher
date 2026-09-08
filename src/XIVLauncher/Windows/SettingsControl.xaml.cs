@@ -82,6 +82,7 @@ namespace XIVLauncher.Windows
 
             // estell 試験機能(既定 OFF)
             IgnoreMaintenanceCheckBox.IsChecked = App.Settings.ExperimentalIgnoreMaintenance ?? false;
+            DebugModeCheckBox.IsChecked = App.Settings.ExperimentalDebugMode ?? false;
 
             LaunchArgsTextBox.Text = App.Settings.AdditionalLaunchArgs;
 
@@ -128,6 +129,7 @@ namespace XIVLauncher.Windows
 
             // estell 試験機能
             App.Settings.ExperimentalIgnoreMaintenance = IgnoreMaintenanceCheckBox.IsChecked == true;
+            App.Settings.ExperimentalDebugMode = DebugModeCheckBox.IsChecked == true;
 
             App.Settings.AdditionalLaunchArgs = LaunchArgsTextBox.Text;
 

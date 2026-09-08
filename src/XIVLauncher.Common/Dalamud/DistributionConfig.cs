@@ -104,4 +104,38 @@ public static class DistributionConfig
     /// <summary>自前 Meta(ブランチ一覧)の取得 URL。自前配信が無効なら null。</summary>
     public static string? CustomMetaUrl =>
         string.IsNullOrEmpty(CustomReleaseBase) ? null : $"{CustomReleaseBase}meta.json";
+
+    // --- [estell] ランチャー自身の自動更新 -------------------------------------
+    //
+    // 公式の自己更新(kamori の Lease API)は使えない。あれを有効にすると
+    // 公式ビルドが降ってきて estell 改変が巻き戻るため。
+    // 代わりに vpk pack が出力する Velopack のフィードを自前ホストに置き、
+    // Velopack の UpdateManager にそこを見せる。
+    //
+    // 置くファイル(vpk pack の出力ディレクトリをそのままコピーすれば足りる):
+    //   {base}releases.win.json     チャンネル 'win' のリリース一覧
+    //   {base}*.nupkg               本体パッケージ(完全 / 差分)
+
+    /// <summary>[estell] ランチャー更新フィードの第一候補(自前 VPS)。</summary>
+    public const string LauncherFeedMirror = "https://estelldprereleaserepo.net/estell/launcher/";
+
+    /// <summary>[estell] ランチャー更新フィードの代替(GitHub Releases)。</summary>
+    public const string LauncherFeedFallback =
+        "https://github.com/rioriopu/estell-launcher-distrib/releases/latest/download/";
+
+    /// <summary>[estell] Velopack のチャンネル名。vpk pack の --channel と合わせること。</summary>
+    public const string LauncherFeedChannel = "win";
+
+    /// <summary>[estell] 試す順に並べたランチャー更新フィード。</summary>
+    public static IEnumerable<string> LauncherFeedUrls
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(LauncherFeedMirror))
+                yield return LauncherFeedMirror;
+
+            if (!string.IsNullOrEmpty(LauncherFeedFallback))
+                yield return LauncherFeedFallback;
+        }
+    }
 }

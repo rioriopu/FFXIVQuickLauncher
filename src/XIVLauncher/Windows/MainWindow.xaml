@@ -191,6 +191,22 @@
                                                                  Height="Auto" Width="Auto" />
                                     </StackPanel>
                                 </Button>
+
+                                <!-- estell 独自: 寄付ボタン。設定画面の中だと気づかれないため表に出す -->
+                                <Button
+                                    x:Name="DonateButton"
+                                    Style="{DynamicResource MaterialDesignFlatButton}" HorizontalAlignment="Left"
+                                    Focusable="False"
+                                    ToolTip="estell を支援する (Patreon)"
+                                    Margin="0" Height="77" Width="77"
+                                    Click="DonateButton_OnClick">
+                                    <StackPanel Orientation="Vertical"
+                                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                        <materialDesign:PackIcon Kind="Heart"
+                                                                 Height="Auto" Width="Auto"
+                                                                 Foreground="#E0557C" />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
 
                             <materialDesign:Card

@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using System.Windows;
 using XIVLauncher.Common.Dalamud;
 
 namespace XIVLauncher.Windows.ViewModel
@@ -46,6 +47,14 @@ namespace XIVLauncher.Windows.ViewModel
         /// </summary>
         public bool HasIncompleteBranchList { get; private set; }
 
+        /// <summary>
+        ///     [estell] デバッグモードで開いているか。true のとき一覧に Track / Key の列を出す。
+        /// </summary>
+        public bool IsDebugMode { get; private set; }
+
+        /// <summary>[estell] デバッグ用の列を表示するかどうか(XAML の Visibility 用)。</summary>
+        public Visibility DebugColumnVisibility => this.IsDebugMode ? Visibility.Visible : Visibility.Collapsed;
+
         public async Task FetchBranchesAsync()
         {
             Branches.Clear();
@@ -57,9 +66,18 @@ namespace XIVLauncher.Windows.ViewModel
             // 表示ポリシー:
             //  - 公式トラックは release / stg のみ常時表示(ベータキー不要。key は Meta に含まれて返るため選択だけで適用)。
             //  - 自前トラックはベータキー必須(入力済みキーと一致した時のみ表示)。
+            //  - [estell] デバッグモードのときは上記を一切かけず、本家の非公開ブランチも含めて全部出す。
+            this.IsDebugMode = App.Settings.ExperimentalDebugMode == true;
+            OnPropertyChanged(nameof(this.IsDebugMode));
+            OnPropertyChanged(nameof(this.DebugColumnVisibility));
+
             foreach (var branch in allBranches)
             {
-                if (DistributionConfig.IsCustomTrack(branch.Track))
+                if (this.IsDebugMode)
+                {
+                    Branches.Add(branch);
+                }
+                else if (DistributionConfig.IsCustomTrack(branch.Track))
                 {
                     if (!string.IsNullOrEmpty(branch.Key) && branch.Key == this.AppliedBetaKey)
                         Branches.Add(branch);

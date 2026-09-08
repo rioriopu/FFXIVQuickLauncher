@@ -56,6 +56,13 @@ namespace XIVLauncher.Settings
         /// </summary>
         bool? ExperimentalIgnoreMaintenance { get; set; }
 
+        /// <summary>
+        ///     デバッグモード。ブランチ切り替え画面で、キーが一致しないものも含めた
+        ///     すべてのトラック(本家の非公開ブランチを含む)と、そのキーを表示する。
+        ///     通常はキーが一致したものだけが見えるため、動作確認時にしか使わない。
+        /// </summary>
+        bool? ExperimentalDebugMode { get; set; }
+
         PreserveWindowPosition.WindowPlacement? MainWindowPlacement { get; set; }
 
         #endregion

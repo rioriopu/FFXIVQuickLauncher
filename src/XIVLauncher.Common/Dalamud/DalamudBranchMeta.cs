@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -112,7 +113,22 @@ public static class DalamudBranchMeta
 
     private static async Task<IEnumerable<Branch>> FetchFromAsync(HttpClient client, string url)
     {
-        var json = await client.GetStringAsync(url).ConfigureAwait(false);
+        // [estell] ブランチ一覧も中間キャッシュを使わせない。
+        // ここが古いままだと、切り替え画面に古いバージョンが表示され続ける。
+        using var message = new HttpRequestMessage(HttpMethod.Get, url);
+
+        message.Headers.CacheControl = new CacheControlHeaderValue
+        {
+            NoCache = true,
+            NoStore = true,
+            MustRevalidate = true,
+        };
+        message.Headers.Pragma.ParseAdd("no-cache");
+
+        using var response = await client.SendAsync(message).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         var dict = JsonSerializer.Deserialize<Dictionary<string, Branch>>(json);
         return dict == null ? throw new Exception("Failed to deserialize branch metadata.") : dict.Values;
     }

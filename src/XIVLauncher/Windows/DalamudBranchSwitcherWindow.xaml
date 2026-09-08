@@ -47,6 +47,12 @@
                 </DataGridTextColumn>
                 <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2*" />
                 <DataGridTextColumn Header="Version" Binding="{Binding AssemblyVersion}" Width="*" />
+                <!-- estell: デバッグモードのときだけ出す。列はビジュアルツリー外なので
+                     Visibility はコードビハインドで設定している。 -->
+                <DataGridTextColumn x:Name="TrackColumn" Header="Track" Binding="{Binding Track}"
+                                    Width="Auto" Visibility="Collapsed" />
+                <DataGridTextColumn x:Name="KeyColumn" Header="Key" Binding="{Binding Key}"
+                                    Width="Auto" Visibility="Collapsed" />
             </DataGrid.Columns>
         </DataGrid>
         <Grid Margin="10" Grid.Row="2">

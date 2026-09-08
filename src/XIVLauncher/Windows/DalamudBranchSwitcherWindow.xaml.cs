@@ -18,12 +18,26 @@ namespace XIVLauncher.Windows
             Loaded += DalamudBranchSwitcherWindow_Loaded;
         }
 
+        /// <summary>
+        ///     [estell] デバッグモードのときだけ Track / Key 列を出す。
+        ///     DataGrid の列はビジュアルツリーに乗らないため XAML のバインドが効かない。
+        /// </summary>
+        private void ApplyDebugColumns()
+        {
+            var visibility = this.Model?.DebugColumnVisibility ?? Visibility.Collapsed;
+
+            this.TrackColumn.Visibility = visibility;
+            this.KeyColumn.Visibility = visibility;
+        }
+
         private async void DalamudBranchSwitcherWindow_Loaded(object sender, RoutedEventArgs e)
         {
             try
             {
                 this.Model.AppliedBetaKey = App.Settings.DalamudBetaKey;
                 await this.Model.FetchBranchesAsync();
+
+                ApplyDebugColumns();
 
                 // [estell] 配布元の一部に繋がらないと一覧が欠けたまま表示される。
                 // 何も知らせないと「ブランチが消えた」と誤解し、release へ切り替えて
@@ -91,6 +105,7 @@ namespace XIVLauncher.Windows
             {
                 Model.AppliedBetaKey = dialog.BetaKey;
                 await Model.FetchBranchesAsync();
+                ApplyDebugColumns();
             }
         }
 

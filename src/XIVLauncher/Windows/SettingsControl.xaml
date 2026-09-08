@@ -388,6 +388,12 @@
                                    TextWrapping="Wrap" Margin="24,2,0,0" MaxWidth="600"
                                    Text="メンテナンス(ゲート閉鎖)の判定を無視してゲームを起動します。ログインはできませんが、タイトル画面までは到達するため、パッチ直後に Dalamud が正しく動作するかをメンテナンス中に確認できます。" />
 
+                        <CheckBox x:Name="DebugModeCheckBox" Margin="0,16,0,0"
+                                  Content="デバッグモード" />
+                        <TextBlock HorizontalAlignment="Left" Foreground="DarkGray" FontSize="11"
+                                   TextWrapping="Wrap" Margin="24,2,0,0" MaxWidth="600"
+                                   Text="ブランチ切り替え画面で、通常は隠れているトラックをすべて表示し、それぞれのキーも表示します。本家の非公開ブランチも含まれます。動作確認用の機能です。" />
+
                         <TextBlock HorizontalAlignment="Left" Foreground="DarkGray" FontSize="11"
                                    TextWrapping="Wrap" Margin="0,20,0,0" MaxWidth="620"
                                    Text="※ Dalamud やプラグインを無効にして起動したい場合は、ログインボタン横のメニューから「Dalamud なしで起動」「プラグインなしで起動」を選んでください。" />

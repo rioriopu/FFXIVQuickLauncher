@@ -180,6 +180,59 @@ namespace XIVLauncher
             });
         }
 
+        /// <summary>
+        ///     [estell] 自前フィードでランチャーの更新を確認し、あれば利用者に尋ねてから適用する。
+        ///
+        ///     勝手に更新すると「起動したら別物になっていた」となるため必ず確認を挟む。
+        ///     フィードに繋がらない・Velopack 管理下でない場合は何も表示せず素通りする
+        ///     (更新の失敗で起動できなくなるのが一番困るため)。
+        /// </summary>
+        private void RunEstellUpdateCheck()
+        {
+            try
+            {
+                var result = EstellLauncherUpdater.CheckAsync().GetAwaiter().GetResult();
+
+                if (!result.HasUpdate)
+                    return;
+
+                var choice = CustomMessageBox.Builder
+                                             .NewFrom($"新しいバージョン {result.NewVersion} があります。\n今すぐ更新しますか?")
+                                             .WithCaption("XIVLauncher (estell) の更新")
+                                             .WithDescription(
+                                                 "「はい」を選ぶとダウンロードして自動で再起動します。\n" +
+                                                 "設定やアカウント情報はそのまま引き継がれます。\n\n" +
+                                                 "「いいえ」を選ぶと今回はこのまま起動します。次回起動時にまた確認します。")
+                                             .WithButtons(MessageBoxButton.YesNo)
+                                             .WithImage(MessageBoxImage.Question)
+                                             .Show();
+
+                if (choice != MessageBoxResult.Yes)
+                {
+                    Log.Information("[ESTELL] User declined launcher update");
+                    return;
+                }
+
+                var applied = EstellLauncherUpdater.ApplyAndRestartAsync(result).GetAwaiter().GetResult();
+
+                // 成功していればここには到達しない(プロセスが差し替わる)。
+                if (!applied)
+                {
+                    CustomMessageBox.Builder
+                                    .NewFrom("更新に失敗しました。このまま起動します。")
+                                    .WithCaption("XIVLauncher (estell) の更新")
+                                    .WithDescription("ネットワークの状態を確認して、次回起動時にもう一度お試しください。")
+                                    .WithImage(MessageBoxImage.Warning)
+                                    .Show();
+                }
+            }
+            catch (Exception ex)
+            {
+                // 更新確認で起動を止めない。
+                Log.Error(ex, "[ESTELL] Launcher update check failed");
+            }
+        }
+
         private void OnUpdateCheckFinished(bool finishUp)
         {
             Dispatcher.Invoke(() =>
@@ -414,6 +467,10 @@ namespace XIVLauncher
             {
                 Log.Error(ex, "Could not set up Steam");
             }
+
+            // [estell] 自前フィードによるランチャー更新。公式の自己更新(kamori Lease)とは
+            // 別系統で、公式ビルドが降ってくることはない。失敗しても起動は続行する。
+            RunEstellUpdateCheck();
 
             if (!AppUtil.IsDisableUpdates)
             {
