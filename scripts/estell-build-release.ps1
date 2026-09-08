@@ -106,8 +106,11 @@ if (-not $SkipSetup) {
     Step 8 'estell-xivlauncher-setup.exe をビルド'
     Push-Location $SetupPrj
     try {
+        # 圧縮は付けない。単一ファイル圧縮は実行時に %TEMP% へ展開するため、
+        # 展開に失敗すると Main に到達せず、利用者側には一瞬ウィンドウが出て消えるだけになる。
+        # サイズは増えるが起動の確実性を優先する。
         dotnet publish -c Release -r win-x64 --self-contained `
-            -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
+            -p:PublishSingleFile=true `
             -o (Join-Path $SetupPrj 'publish')
     } finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) { throw 'フルインストーラEXE のビルドに失敗' }
