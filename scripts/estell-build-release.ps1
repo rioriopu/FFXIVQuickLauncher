@@ -133,8 +133,18 @@ if ($PublishFeed) {
     Write-Host "  nupkg $($nupkgs.Count) 件 / releases.win.json OK"
 
     # タグ 'win' を使い回す(Velopack のチャンネル名と一致)。
-    gh release view win --repo $FeedRepo *> $null
-    if ($LASTEXITCODE -ne 0) {
+    #
+    # gh はタグが無いと stderr に "release not found" を出す。PowerShell はネイティブ
+    # コマンドの stderr を ErrorRecord に包むため、$ErrorActionPreference='Stop' の下で
+    # リダイレクトすると NativeCommandError で止まってしまう。
+    # ここは「無ければ作る」だけなので、判定の間だけ Stop を外して終了コードで見る。
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    gh release view win --repo $FeedRepo | Out-Null
+    $feedExists = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $prevEap
+
+    if (-not $feedExists) {
         gh release create win --repo $FeedRepo --title 'estell launcher feed (win)' `
             --notes 'Velopack のフィード。estell-build-release.ps1 が自動で更新します。'
         if ($LASTEXITCODE -ne 0) { throw 'Release の作成に失敗' }
