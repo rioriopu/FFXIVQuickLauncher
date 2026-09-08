@@ -194,13 +194,15 @@
 
                                 <!-- estell 独自: 寄付ボタン。設定画面の中だと気づかれないため表に出す。
                                      アイコンだと用途が伝わらない(ハートは「お気に入り」に見える)ので
-                                     文字にしている。他のボタンと同じ 77x77 の枠に収める。 -->
+                                     文字にしている。幅はアイコンより狭くする。
+                                     77 だと文字に対して枠が広すぎ、ホバー時の背景が
+                                     間延びして浮いて見えるため。 -->
                                 <Button
                                     x:Name="DonateButton"
                                     Style="{DynamicResource MaterialDesignFlatButton}" HorizontalAlignment="Left"
                                     Focusable="False"
                                     ToolTip="estell を支援する (Patreon)"
-                                    Margin="0" Height="77" Width="77"
+                                    Margin="0" Height="77" Width="52"
                                     Padding="0"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
