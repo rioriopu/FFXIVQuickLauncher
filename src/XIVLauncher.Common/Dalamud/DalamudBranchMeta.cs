@@ -111,6 +111,102 @@ public static class DalamudBranchMeta
     public static async Task<IEnumerable<Branch>> FetchBranchesAsync(HttpClient client)
         => (await FetchBranchesDetailedAsync(client).ConfigureAwait(false)).Branches;
 
+    /// <summary>
+    ///     [estell] 本家 declarative の config.yaml から、kamori の一覧に載らないトラックを拾う。
+    ///
+    ///     kamori の Meta は release / stg しか返さない。api16 のように declarative には
+    ///     定義済みでも配信前のトラックは一覧に出てこないため、デバッグ用に定義元を直接見る。
+    ///
+    ///     YAML パーサは入れていない。この config.yaml は
+    ///       tracks:
+    ///         &lt;name&gt;:
+    ///           key: "..."
+    ///           displayName: "..."
+    ///     という単純な入れ子しか使わないので、行単位で読めば足りる。
+    ///     形式が変わったら黙って空を返す(ここで例外を出して切替画面を壊さない)。
+    /// </summary>
+    public static async Task<List<Branch>> FetchDeclarativeTracksAsync(HttpClient client)
+    {
+        const string url = "https://raw.githubusercontent.com/goatcorp/dalamud-declarative/main/config.yaml";
+        var result = new List<Branch>();
+
+        try
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Get, url);
+            message.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
+
+            using var response = await client.SendAsync(message).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            Branch current = null;
+
+            foreach (var raw in text.Split('\n'))
+            {
+                var line = raw.TrimEnd('\r');
+
+                if (line.Length == 0 || line.TrimStart().StartsWith("#"))
+                    continue;
+
+                var indent = line.Length - line.TrimStart().Length;
+                var trimmed = line.Trim();
+
+                // 「  <name>:」= トラックの開始。値を持たない行だけが該当する。
+                if (indent == 2 && trimmed.EndsWith(":") && !trimmed.StartsWith("-"))
+                {
+                    current = new Branch { Track = trimmed.TrimEnd(':').Trim('"', '\'') };
+                    result.Add(current);
+                    continue;
+                }
+
+                if (current == null || indent < 4)
+                    continue;
+
+                var sep = trimmed.IndexOf(':');
+                if (sep <= 0)
+                    continue;
+
+                var name = trimmed.Substring(0, sep).Trim();
+                var value = trimmed.Substring(sep + 1).Trim();
+
+                // 行末コメント(key: "Torgal!"  # awoo?)を落とす。
+                // 値が引用符で始まる場合は閉じ引用符までを値とする。
+                if (value.StartsWith("\"") || value.StartsWith("'"))
+                {
+                    var quote = value[0];
+                    var end = value.IndexOf(quote, 1);
+                    value = end > 0 ? value.Substring(1, end - 1) : value.Trim(quote);
+                }
+                else
+                {
+                    var hash = value.IndexOf('#');
+                    if (hash >= 0) value = value.Substring(0, hash).Trim();
+                }
+
+                switch (name)
+                {
+                    case "key": current.Key = value; break;
+                    case "displayName": current.DisplayName = value; break;
+                    case "description": current.Description = value; break;
+                    case "applicableGameVersion": current.SupportedGameVer = value; break;
+                    case "runtimeVersion": current.RuntimeVersion = value; break;
+                    case "hidden": current.Hidden = value.Equals("true", StringComparison.OrdinalIgnoreCase); break;
+                }
+            }
+
+            // トラック名を持たない見出し行(tracks: 等)を除く。
+            result.RemoveAll(x => string.IsNullOrEmpty(x.Track) || string.IsNullOrEmpty(x.DisplayName));
+        }
+        catch
+        {
+            // 取得も解析もできなくてよい。デバッグ用の追加情報にすぎない。
+            return [];
+        }
+
+        return result;
+    }
+
     private static async Task<IEnumerable<Branch>> FetchFromAsync(HttpClient client, string url)
     {
         // [estell] ブランチ一覧も中間キャッシュを使わせない。

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -85,6 +87,27 @@ namespace XIVLauncher.Windows.ViewModel
                 else if (DistributionConfig.IsOfficialVisibleTrack(branch.Track))
                 {
                     Branches.Add(branch);
+                }
+            }
+
+            // [estell] デバッグモードでは、kamori の一覧に載らないトラックも見せる。
+            // api16 のように declarative には定義済みでも kamori が配信前だと
+            // Meta に出てこないため、定義元(config.yaml)から補完する。
+            if (this.IsDebugMode)
+            {
+                var declared = await DalamudBranchMeta.FetchDeclarativeTracksAsync(App.HttpClient);
+                var known = new HashSet<string>(
+                    Branches.Select(x => x.Track ?? string.Empty), StringComparer.OrdinalIgnoreCase);
+
+                foreach (var d in declared)
+                {
+                    if (known.Contains(d.Track))
+                        continue;
+
+                    // まだ配信されていないものは、選んでも release が降ってくる。
+                    // 一覧上で見分けられるように印を付けておく。
+                    d.DisplayName = $"{d.DisplayName} [未配信]";
+                    Branches.Add(d);
                 }
             }
 

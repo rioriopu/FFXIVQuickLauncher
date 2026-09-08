@@ -160,6 +160,32 @@ if ($PublishFeed) {
     if ($LASTEXITCODE -ne 0) { throw 'releases.win.json のアップロードに失敗' }
 
     Write-Host '  公開しました。VPS へは mirror-to-vps ワークフローが同期します。' -ForegroundColor Green
+
+    # フルインストーラも自前ドメインへ置く。
+    # ここを飛ばすとドメイン側だけ古い版が残り続ける。
+    # 実際 2026-09-09 に、ドメインが 3 週間前のインストーラを配ったままになっていた。
+    $setupExe = Join-Path $SetupPrj 'publish\estell-xivlauncher-setup.exe'
+    if (Test-Path $setupExe) {
+        Step 10 'フルインストーラを自前ドメインへ配置'
+
+        $key = "$env:USERPROFILE\.ssh\estell_actions"
+        if (-not (Test-Path $key)) {
+            Write-Warning "  SSH鍵が無いのでドメインへの配置を飛ばす: $key"
+        }
+        else {
+            $dest = 'root@133.167.127.79:/home/ubuntu/estelld-repo/static/estell/launcher/'
+            scp -i $key -o BatchMode=yes -o StrictHostKeyChecking=no $setupExe $dest
+            if ($LASTEXITCODE -ne 0) { throw 'ドメインへの配置に失敗' }
+
+            # 転送事故の検出。150MB 級なので必ず照合する。
+            $localHash = (Get-FileHash $setupExe -Algorithm SHA256).Hash.ToLower()
+            $remoteHash = (ssh -i $key -o BatchMode=yes -o StrictHostKeyChecking=no root@133.167.127.79 `
+                    'sha256sum /home/ubuntu/estelld-repo/static/estell/launcher/estell-xivlauncher-setup.exe' ).Split(' ')[0]
+            if ($localHash -ne $remoteHash) { throw "ドメイン側とハッシュが不一致 (local=$localHash remote=$remoteHash)" }
+
+            Write-Host '  ドメインへ配置し、ハッシュ一致を確認しました。' -ForegroundColor Green
+        }
+    }
 }
 
 Write-Host "`n=== 完成 ===" -ForegroundColor Green

@@ -192,20 +192,29 @@
                                     </StackPanel>
                                 </Button>
 
-                                <!-- estell 独自: 寄付ボタン。設定画面の中だと気づかれないため表に出す -->
+                                <!-- estell 独自: 寄付ボタン。設定画面の中だと気づかれないため表に出す。
+                                     アイコンだと用途が伝わらない(ハートは「お気に入り」に見える)ので
+                                     文字にしている。他のボタンと同じ 77x77 の枠に収める。 -->
                                 <Button
                                     x:Name="DonateButton"
                                     Style="{DynamicResource MaterialDesignFlatButton}" HorizontalAlignment="Left"
                                     Focusable="False"
                                     ToolTip="estell を支援する (Patreon)"
                                     Margin="0" Height="77" Width="77"
+                                    Padding="0"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
                                     Click="DonateButton_OnClick">
-                                    <StackPanel Orientation="Vertical"
-                                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                                        <materialDesign:PackIcon Kind="Heart"
-                                                                 Height="Auto" Width="Auto"
-                                                                 Foreground="#E0557C" />
-                                    </StackPanel>
+                                    <!-- Padding を 0 にしないと、Material Design の既定 Padding
+                                         (左右16/上下4)の分だけ中身が下にずれて、隣のアイコンと
+                                         高さが揃わない。アイコン側は Auto 伸縮なので影響を受けない。 -->
+                                    <TextBlock Text="寄付"
+                                               FontSize="16"
+                                               FontWeight="Bold"
+                                               TextAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="#E0557C" />
                                 </Button>
                             </StackPanel>
 
