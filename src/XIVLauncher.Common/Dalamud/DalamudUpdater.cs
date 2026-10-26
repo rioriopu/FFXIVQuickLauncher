@@ -692,35 +692,68 @@ namespace XIVLauncher.Common.Dalamud
 
         private async Task DownloadRuntime(DirectoryInfo runtimePath, string version)
         {
-            // Ensure directory exists
-            if (!runtimePath.Exists)
+            // 実行中のゲームや補助プロセスが使う旧版は削除しない。
+            // 同じフォルダを使う別ランチャーとの更新も、ファイルロックで直列化する。
+            runtimePath.Create();
+            using var updateLock = await AcquireRuntimeUpdateLock(runtimePath).ConfigureAwait(false);
+            var versionDirectories = new[]
             {
-                runtimePath.Create();
-            }
-            else
+                Path.Combine(runtimePath.FullName, "host", "fxr", version),
+                Path.Combine(runtimePath.FullName, "shared", "Microsoft.NETCore.App", version),
+                Path.Combine(runtimePath.FullName, "shared", "Microsoft.WindowsDesktop.App", version),
+            };
+            if (versionDirectories.All(Directory.Exists)
+                && await this.CheckRuntimeHashes(runtimePath, version).ConfigureAwait(false))
+                return;
+
+            var staging = new DirectoryInfo(Path.Combine(Path.GetTempPath(), "estell-runtime-" + Guid.NewGuid().ToString("N")));
+            staging.Create();
+            try
             {
-                runtimePath.Delete(true);
-                runtimePath.Create();
+                var extracted = staging.CreateSubdirectory("extracted");
+                foreach (var component in new[] { "DotNet", "WindowsDesktop" })
+                {
+                    var archive = Path.Combine(staging.FullName, component + ".zip");
+                    await this.DownloadFile($"https://kamori.goats.dev/Dalamud/Release/Runtime/{component}/{version}", archive).ConfigureAwait(false);
+                    ZipFile.ExtractToDirectory(archive, extracted.FullName, overwriteFiles: true);
+                }
+
+                // 取得・展開・ハッシュ検証がすべて済むまで既存の構成には触れない。
+                if (!await this.CheckRuntimeHashes(extracted, version).ConfigureAwait(false))
+                    throw new DalamudIntegrityException("Downloaded runtime did not pass integrity verification");
+
+                PlatformHelpers.CopyFilesRecursively(extracted, runtimePath);
             }
+            finally
+            {
+                try
+                {
+                    var tempRoot = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                    if (staging.FullName.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase))
+                        staging.Delete(true);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "[DUPDATE] Could not remove temporary runtime files");
+                }
+            }
+        }
 
-            // Wait for it to be gone, thanks Windows
-            Thread.Sleep(1000);
-
-            var dotnetUrl = $"https://kamori.goats.dev/Dalamud/Release/Runtime/DotNet/{version}";
-            var desktopUrl = $"https://kamori.goats.dev/Dalamud/Release/Runtime/WindowsDesktop/{version}";
-
-            var downloadPath = PlatformHelpers.GetTempFileName();
-
-            if (File.Exists(downloadPath))
-                File.Delete(downloadPath);
-
-            await this.DownloadFile(dotnetUrl, downloadPath).ConfigureAwait(false);
-            ZipFile.ExtractToDirectory(downloadPath, runtimePath.FullName);
-
-            await this.DownloadFile(desktopUrl, downloadPath).ConfigureAwait(false);
-            ZipFile.ExtractToDirectory(downloadPath, runtimePath.FullName);
-
-            File.Delete(downloadPath);
+        private static async Task<FileStream> AcquireRuntimeUpdateLock(DirectoryInfo runtimePath)
+        {
+            var lockPath = Path.Combine(runtimePath.FullName, "estell-update.lock");
+            var deadline = DateTime.UtcNow.AddMinutes(2);
+            while (true)
+            {
+                try
+                {
+                    return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException) when (DateTime.UtcNow < deadline)
+                {
+                    await Task.Delay(250).ConfigureAwait(false);
+                }
+            }
         }
 
         public async Task DownloadFile(string url, string path)

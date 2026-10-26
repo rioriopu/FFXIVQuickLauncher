@@ -6,9 +6,9 @@
 # ゲームのパッチ適用時に「パッチインストーラーが正しく起動できませんでした」で
 # 起動不能になる。手順漏れを防ぐため一括化した。
 #
-# 事前に src/XIVLauncher/XIVLauncher.csproj の VersionPrefix、
-# src/XIVLauncher/AppUtil.cs の EstellVersion、
-# C:\Tools\EstellPatcher の Version/Estell 定数を更新しておくこと。
+# 事前に src/XIVLauncher/XIVLauncher.csproj の VersionPrefix と
+# src/XIVLauncher/AppUtil.cs の EstellVersion を更新しておくこと。
+# EstellPatcher / EstellSetup の Version/Estell 定数はこのスクリプトが自動で揃える。
 
 [CmdletBinding()]
 param(
@@ -37,6 +37,29 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 
 function Step($n, $text) { Write-Host "`n[$n] $text" -ForegroundColor Cyan }
+
+# EstellPatcher / EstellSetup の Program.cs にある Version / Estell 定数を実体に合わせる。
+# 手で直す運用だと更新漏れが起き、インストーラの「更新があります」ダイアログや
+# 完了メッセージが実際とは違う版を表示してしまう。
+function Set-VersionConstants([string]$file, [string]$ver, [string]$tag) {
+    if (-not (Test-Path $file)) { throw "定数の埋め込み対象が無い: $file" }
+    $src = Get-Content $file -Raw -Encoding UTF8
+    $new = [regex]::Replace($src, '(const string Version\s*=\s*")[^"]*(")', "`${1}$ver`${2}")
+    $new = [regex]::Replace($new, '(const string Estell\s*=\s*")[^"]*(")',  "`${1}$tag`${2}")
+    if ($new -cne $src) {
+        Set-Content $file $new -Encoding UTF8 -NoNewline
+        Write-Host "  版を更新: $file → $ver / $tag"
+    } else {
+        Write-Host "  版は一致: $file ($ver / $tag)"
+    }
+}
+
+# estell 版のタグ(estell.N)は AppUtil.cs が正。ここから拾って各 Program.cs に配る。
+$appUtil = Join-Path $repo 'src\XIVLauncher\AppUtil.cs'
+$m = [regex]::Match((Get-Content $appUtil -Raw -Encoding UTF8), 'EstellVersion\s*=\s*"([^"]+)"')
+if (-not $m.Success) { throw "AppUtil.cs から EstellVersion を読めない: $appUtil" }
+$EstellTag = $m.Groups[1].Value
+Write-Host "estell タグ = $EstellTag (AppUtil.cs)"
 
 # --- 1) 本体 ---------------------------------------------------------------
 Step 1 "XIVLauncher 本体を publish → $PublishDir"
@@ -92,6 +115,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($PublishDir, $OverlayZip, [IO.Compression.CompressionLevel]::Optimal, $false)
 
 Step 7 'estell-xivlauncher-patch.exe をビルド'
+Set-VersionConstants (Join-Path $PatcherPrj 'Program.cs') $Version $EstellTag
 Push-Location $PatcherPrj
 try {
     dotnet publish -c Release -r win-x64 --self-contained `
@@ -104,6 +128,7 @@ if ($LASTEXITCODE -ne 0) { throw 'パッチ適用EXE のビルドに失敗' }
 # vpk が生成した Setup.exe を埋め込むので、必ず手順 5 の後に実行する。
 if (-not $SkipSetup) {
     Step 8 'estell-xivlauncher-setup.exe をビルド'
+    Set-VersionConstants (Join-Path $SetupPrj 'Program.cs') $Version $EstellTag
     Push-Location $SetupPrj
     try {
         # 圧縮は付けない。単一ファイル圧縮は実行時に %TEMP% へ展開するため、
