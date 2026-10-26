@@ -119,7 +119,7 @@ Set-VersionConstants (Join-Path $PatcherPrj 'Program.cs') $Version $EstellTag
 Push-Location $PatcherPrj
 try {
     dotnet publish -c Release -r win-x64 --self-contained `
-        -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
+        -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=$Version `
         -o (Join-Path $PatcherPrj 'publish')
 } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { throw 'パッチ適用EXE のビルドに失敗' }
@@ -135,7 +135,7 @@ if (-not $SkipSetup) {
         # 展開に失敗すると Main に到達せず、利用者側には一瞬ウィンドウが出て消えるだけになる。
         # サイズは増えるが起動の確実性を優先する。
         dotnet publish -c Release -r win-x64 --self-contained `
-            -p:PublishSingleFile=true `
+            -p:PublishSingleFile=true -p:Version=$Version `
             -o (Join-Path $SetupPrj 'publish')
     } finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) { throw 'フルインストーラEXE のビルドに失敗' }

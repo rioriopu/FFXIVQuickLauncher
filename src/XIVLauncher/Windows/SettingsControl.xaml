@@ -208,6 +208,9 @@
                                 </Button>
                             </Border>
 
+                            <Button Content="ランタイムの確認・修復..." HorizontalAlignment="Left"
+                                    Margin="10,10,0,10" Click="OpenRuntimeRepair_OnClick" />
+
                             <!-- [estell] アカウント別プロファイル(複数アカウント/多重起動) -->
                             <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,18,0,0"
                                        Foreground="{DynamicResource MaterialDesignBody}"

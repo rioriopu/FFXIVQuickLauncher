@@ -412,6 +412,11 @@ namespace XIVLauncher.Windows
             window.ShowDialog();
         }
 
+        private void OpenRuntimeRepair_OnClick(object sender, RoutedEventArgs e)
+        {
+            new RuntimeRepairWindow { Owner = Window.GetWindow(this) }.ShowDialog();
+        }
+
         private void OpenAccountProfiles_OnClick(object sender, RoutedEventArgs e)
         {
             var window = new AccountProfilesWindow
