@@ -2,13 +2,13 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using Serilog;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using System.Threading.Tasks;
 using XIVLauncher.Common.Util;
 
@@ -28,6 +28,9 @@ namespace XIVLauncher.Common.Dalamud
 
             [JsonPropertyName("packageUrl")]
             public string PackageUrl { get; set; }
+
+            [JsonPropertyName("originalPackageUrl")]
+            public string? OriginalPackageUrl { get; set; }
 
             public class Asset
             {
@@ -49,8 +52,6 @@ namespace XIVLauncher.Common.Dalamud
                 NoCache = true,
             };
 
-            using var sha1 = SHA1.Create();
-
             Log.Verbose("[DASSET] Starting asset download");
 
             var (isRefreshNeeded, info) = await CheckAssetRefreshNeeded(client, baseDir);
@@ -58,65 +59,47 @@ namespace XIVLauncher.Common.Dalamud
             var currentDir = new DirectoryInfo(Path.Combine(baseDir.FullName, info.Version.ToString()));
             var devDir = new DirectoryInfo(Path.Combine(baseDir.FullName, "dev"));
 
-            // If we don't need a refresh, let's check if all hashes are good
             if (!isRefreshNeeded)
-            {
-                foreach (var entry in info.Assets)
-                {
-                    var filePath = Path.Combine(currentDir.FullName, entry.FileName);
-
-                    if (!File.Exists(filePath))
-                    {
-                        Log.Error("[DASSET] {0} not found locally", entry.FileName);
-                        isRefreshNeeded = true;
-                        break;
-                    }
-
-                    if (string.IsNullOrEmpty(entry.Hash))
-                        continue;
-
-                    try
-                    {
-                        using var file = File.OpenRead(filePath);
-                        var fileHash = sha1.ComputeHash(file);
-                        var stringHash = BitConverter.ToString(fileHash).Replace("-", "");
-
-                        if (stringHash != entry.Hash)
-                        {
-                            Log.Error("[DASSET] {0} has {1}, remote {2}, need refresh", entry.FileName, stringHash, entry.Hash);
-                            isRefreshNeeded = true;
-                            //break;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error(ex, "[DASSET] Could not read asset");
-                        isRefreshNeeded = true;
-                        break;
-                    }
-                }
-            }
+                isRefreshNeeded = !CheckAssets(currentDir, info);
 
             if (isRefreshNeeded)
             {
-                PlatformHelpers.DeleteAndRecreateDirectory(currentDir);
-
-                // Wait for it to be gone
-                Thread.Sleep(1000);
-
-                var packageUrl = info.PackageUrl;
-
-                var tempPath = PlatformHelpers.GetTempFileName();
-
-                if (File.Exists(tempPath))
-                    File.Delete(tempPath);
-
-                await updater.DownloadFile(packageUrl, tempPath);
-
-                using (var packageStream = File.OpenRead(tempPath))
-                using (var packageArc = new ZipArchive(packageStream, ZipArchiveMode.Read))
+                var staging = new DirectoryInfo(Path.Combine(Path.GetTempPath(), "estell-assets-" + Guid.NewGuid().ToString("N")));
+                staging.Create();
+                try
                 {
-                    packageArc.ExtractToDirectory(currentDir.FullName);
+                    var official = info.OriginalPackageUrl ?? info.PackageUrl;
+                    var sources = (DistributionConfig.HasMirror ? new[] { DistributionConfig.MirrorAssetPackageUrl(info.Version), official } : new[] { official }).Distinct().ToArray();
+                    DirectoryInfo? verified = null;
+                    for (var index = 0; index < sources.Length; index++)
+                    {
+                        var extracted = staging.CreateSubdirectory(index.ToString());
+                        try
+                        {
+                            var archive = Path.Combine(staging.FullName, "package.zip");
+                            await updater.DownloadDependencyFile(sources[index], archive).ConfigureAwait(false);
+                            ZipFile.ExtractToDirectory(archive, extracted.FullName);
+                            if (!CheckAssets(extracted, info))
+                                throw new InvalidDataException("取得したアセットが公式ハッシュと一致しません。");
+                            verified = extracted;
+                            break;
+                        }
+                        catch (Exception ex) when (index + 1 < sources.Length)
+                        {
+                            Log.Warning(ex, "[DASSET] Asset mirror failed verification or download; trying official source");
+                        }
+                    }
+                    // 検証済みの取得物がそろってから、既存の対象版を入れ直す。
+                    PlatformHelpers.DeleteAndRecreateDirectory(currentDir);
+                    PlatformHelpers.CopyFilesRecursively(verified!, currentDir);
+                    if (!CheckAssets(currentDir, info))
+                        throw new InvalidDataException("配置後のアセット検証に失敗しました。");
+                }
+                finally
+                {
+                    var tempRoot = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                    if (staging.FullName.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase))
+                        staging.Delete(recursive: true);
                 }
 
                 try
@@ -129,7 +112,6 @@ namespace XIVLauncher.Common.Dalamud
                     Log.Error(ex, "[DASSET] Could not copy to dev dir");
                 }
 
-                File.Delete(tempPath);
             }
 
             if (isRefreshNeeded)
@@ -154,9 +136,33 @@ namespace XIVLauncher.Common.Dalamud
             return Path.Combine(baseDir.FullName, "asset.ver");
         }
 
+        private static bool CheckAssets(DirectoryInfo directory, AssetInfo info)
+        {
+            try
+            {
+                var prefix = directory.FullName.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                foreach (var entry in info.Assets)
+                {
+                    var path = Path.GetFullPath(Path.Combine(directory.FullName, entry.FileName));
+                    if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+                        return false;
+                    if (string.IsNullOrEmpty(entry.Hash))
+                        continue;
+                    using var file = File.OpenRead(path);
+                    if (!string.Equals(Convert.ToHexString(SHA1.HashData(file)), entry.Hash, StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[DASSET] Asset verification failed");
+                return false;
+            }
+        }
+
         /// <summary>
-        ///     Check if an asset update is needed. When this fails, just return false - the route to github
-        ///     might be bad, don't wanna just bail out in that case
+        ///     ミラー、公式の順に一覧を確認する。導入済みより古い一覧は採用しない。
         /// </summary>
         /// <param name="client"><see cref="HttpClient"/> to use for download</param>
         /// <param name="baseDir">Base directory for assets</param>
@@ -177,9 +183,20 @@ namespace XIVLauncher.Common.Dalamud
                 Log.Error(ex, "[DASSET] Could not read asset.ver");
             }
 
-            var remoteVer = JsonSerializer.Deserialize<AssetInfo>(await client.GetStringAsync(ASSET_STORE_URL));
-            if (remoteVer == null)
-                throw new Exception("Could not get remote asset info");
+            var metadataSources = DistributionConfig.HasMirror ? new[] { DistributionConfig.MirrorAssetMetaUrl, ASSET_STORE_URL } : new[] { ASSET_STORE_URL };
+            var remoteVer = await DependencySource.ReadJson(client, metadataSources, json =>
+            {
+                var info = JsonSerializer.Deserialize<AssetInfo>(json);
+                if (info == null || info.Version <= 0 || info.Version < localVer || info.Assets is not { Count: > 0 }
+                    || !Uri.TryCreate(info.PackageUrl, UriKind.Absolute, out var url) || url.Scheme != "https"
+                    || info.Assets.Any(entry => string.IsNullOrWhiteSpace(entry.FileName)
+                        || (!string.IsNullOrEmpty(entry.Hash) && (entry.Hash.Length != 40 || !entry.Hash.All(Uri.IsHexDigit)))))
+                    throw new InvalidDataException("アセット一覧が不正、または導入済みより古い版です。");
+                if (DistributionConfig.HasMirror && info.PackageUrl.StartsWith(DistributionConfig.MirrorBase, StringComparison.OrdinalIgnoreCase)
+                    && (!Uri.TryCreate(info.OriginalPackageUrl, UriKind.Absolute, out var original) || original.Scheme != "https"))
+                    throw new InvalidDataException("ミラーのアセット一覧に公式の代替取得先がありません。");
+                return info;
+            }).ConfigureAwait(false);
 
             Log.Verbose("[DASSET] Ver check - local:{0} remote:{1}", localVer, remoteVer.Version);
 

@@ -155,6 +155,35 @@ public class DalamudRuntimeUpdateTests
         Assert.AreEqual(4, fixture.DownloadCount);
     }
 
+    [TestMethod]
+    public async Task MirrorOnlyRuntimeDoesNotContactOfficialServer()
+    {
+        using var fixture = new Fixture();
+        await fixture.Update();
+        await fixture.Update();
+        Assert.AreEqual(0, fixture.OfficialRequests);
+        Assert.AreEqual(2, fixture.DownloadCount);
+    }
+
+    [TestMethod]
+    public async Task UnavailableRuntimeMirrorFallsBackToOfficialServer()
+    {
+        using var fixture = new Fixture { MirrorUnavailable = true };
+        await fixture.Update();
+        Assert.IsTrue(fixture.OfficialRequests > 0);
+        Assert.AreEqual("10.0.14", File.ReadAllText(Path.Combine(fixture.Runtime.FullName, "version")));
+    }
+
+    [TestMethod]
+    public async Task CorruptMirroredRuntimeFallsBackAfterHashVerification()
+    {
+        using var fixture = new Fixture { CorruptMirror = true };
+        await fixture.Update();
+        Assert.AreEqual(4, fixture.DownloadCount);
+        Assert.IsTrue(fixture.OfficialRequests > 0);
+        Assert.AreEqual("legacy", File.ReadAllText(fixture.LegacyFile));
+    }
+
     private sealed class Fixture : HttpMessageHandler, IDisposable
     {
         private readonly DirectoryInfo root = new(Path.Combine(Path.GetTempPath(), "estell-runtime-test-" + Guid.NewGuid().ToString("N")));
@@ -182,6 +211,9 @@ public class DalamudRuntimeUpdateTests
         public string LegacyFile { get; }
         public bool FailDownload { get; init; }
         public bool InvalidHashes { get; init; }
+        public bool MirrorUnavailable { get; init; }
+        public bool CorruptMirror { get; init; }
+        public int OfficialRequests { get; private set; }
         public int DownloadCount => downloadCount;
 
         public async Task Update()
@@ -194,7 +226,12 @@ public class DalamudRuntimeUpdateTests
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (request.RequestUri!.AbsolutePath.Contains("/Hashes/"))
+            var mirror = request.RequestUri!.Host == new Uri(DistributionConfig.MirrorBase).Host;
+            if (!mirror)
+                OfficialRequests++;
+            if (mirror && MirrorUnavailable)
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            if (request.RequestUri!.AbsolutePath.Contains("/Hashes/") || request.RequestUri.AbsolutePath.EndsWith("/hashes.json"))
             {
                 var hashes = new Dictionary<string, string>();
                 foreach (var item in files)
@@ -211,7 +248,7 @@ public class DalamudRuntimeUpdateTests
             using (var archive = new ZipArchive(bytes, ZipArchiveMode.Create, leaveOpen: true))
                 foreach (var file in files)
                     using (var stream = archive.CreateEntry(file.Key).Open())
-                        stream.Write(file.Value);
+                        stream.Write(mirror && CorruptMirror && file.Key.EndsWith("coreclr.dll") ? Encoding.UTF8.GetBytes("bad-core") : file.Value);
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes.ToArray()) };
         }
 

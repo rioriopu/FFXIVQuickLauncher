@@ -288,3 +288,7 @@ src/Update.exe
 
 # XLCore build directory
 src/XIVLauncher.Core/build
+
+# Python の同期・検証スクリプトが生成するキャッシュ
+__pycache__/
+*.pyc

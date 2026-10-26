@@ -203,10 +203,11 @@ namespace XIVLauncher.Common.Dalamud
 
             try
             {
-                var versionInfoResponse = await this.client.SendAsync(message).ConfigureAwait(false);
+                using var primaryTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var versionInfoResponse = await this.client.SendAsync(message, primaryTimeout.Token).ConfigureAwait(false);
                 versionInfoResponse.EnsureSuccessStatusCode();
                 versionInfoRelease = JsonConvert.DeserializeObject<DalamudVersionInfo>(
-                    await versionInfoResponse.Content.ReadAsStringAsync().ConfigureAwait(false));
+                    await versionInfoResponse.Content.ReadAsStringAsync(primaryTimeout.Token).ConfigureAwait(false));
             }
             catch (Exception ex)
             {
@@ -219,10 +220,11 @@ namespace XIVLauncher.Common.Dalamud
 
                 Log.Warning(ex, "[DUPDATE] Official release manifest unreachable, falling back to mirror");
 
-                var mirrorResponse = await this.client.GetAsync(mirror).ConfigureAwait(false);
+                using var mirrorTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var mirrorResponse = await this.client.GetAsync(mirror, mirrorTimeout.Token).ConfigureAwait(false);
                 mirrorResponse.EnsureSuccessStatusCode();
                 versionInfoRelease = JsonConvert.DeserializeObject<DalamudVersionInfo>(
-                    await mirrorResponse.Content.ReadAsStringAsync().ConfigureAwait(false));
+                    await mirrorResponse.Content.ReadAsStringAsync(mirrorTimeout.Token).ConfigureAwait(false));
 
                 Log.Information("[DUPDATE] Using mirrored release manifest ({Version})", versionInfoRelease?.AssemblyVersion);
             }
@@ -660,7 +662,7 @@ namespace XIVLauncher.Common.Dalamud
             return localVersion;
         }
 
-        private async Task<bool> CheckRuntimeHashes(DirectoryInfo runtimePath, string version)
+        private async Task<bool> CheckRuntimeHashes(DirectoryInfo runtimePath, string version, bool mirrorFirst = true)
         {
             var hashesFile = new FileInfo(Path.Combine(runtimePath.FullName, $"hashes-{version}.json"));
             string? runtimeHashes;
@@ -671,7 +673,10 @@ namespace XIVLauncher.Common.Dalamud
 
                 try
                 {
-                    runtimeHashes = await this.client.GetStringAsync($"https://kamori.goats.dev/Dalamud/Release/Runtime/Hashes/{version}").ConfigureAwait(false);
+                    var official = $"https://kamori.goats.dev/Dalamud/Release/Runtime/Hashes/{version}";
+                    var sources = mirrorFirst && DistributionConfig.HasMirror ? new[] { DistributionConfig.MirrorRuntimeUrl(version, "hashes.json"), official } : new[] { official };
+                    runtimeHashes = await DependencySource.ReadJson(this.client, sources, json =>
+                        ValidRuntimeHashes(json) ? json : throw new InvalidDataException("ランタイムのハッシュ一覧が不正です。")).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -686,7 +691,20 @@ namespace XIVLauncher.Common.Dalamud
                 runtimeHashes = File.ReadAllText(hashesFile.FullName);
             }
 
-            return CheckIntegrity(runtimePath, runtimeHashes);
+            return ValidRuntimeHashes(runtimeHashes) && CheckIntegrity(runtimePath, runtimeHashes);
+        }
+
+        private static bool ValidRuntimeHashes(string json)
+        {
+            try
+            {
+                var hashes = JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
+                return hashes is { Count: > 0 } && hashes.All(entry => entry.Value.Length == 32 && entry.Value.All(Uri.IsHexDigit));
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private async Task DownloadRuntime(DirectoryInfo runtimePath, string version)
@@ -709,20 +727,34 @@ namespace XIVLauncher.Common.Dalamud
             staging.Create();
             try
             {
-                var extracted = staging.CreateSubdirectory("extracted");
-                foreach (var component in new[] { "DotNet", "WindowsDesktop" })
+                DirectoryInfo? verified = null;
+                foreach (var mirrorFirst in DistributionConfig.HasMirror ? new[] { true, false } : new[] { false })
                 {
-                    var archive = Path.Combine(staging.FullName, component + ".zip");
-                    await this.DownloadFile($"https://kamori.goats.dev/Dalamud/Release/Runtime/{component}/{version}", archive).ConfigureAwait(false);
-                    ZipFile.ExtractToDirectory(archive, extracted.FullName, overwriteFiles: true);
+                    var extracted = staging.CreateSubdirectory(mirrorFirst ? "mirror" : "official");
+                    try
+                    {
+                        foreach (var component in new[] { "DotNet", "WindowsDesktop" })
+                        {
+                            var archive = Path.Combine(extracted.Parent!.FullName, component + ".zip");
+                            var url = mirrorFirst
+                                ? DistributionConfig.MirrorRuntimeUrl(version, component == "DotNet" ? "dotnet.zip" : "windowsdesktop.zip")
+                                : $"https://kamori.goats.dev/Dalamud/Release/Runtime/{component}/{version}";
+                            await DependencySource.Download(this.client, url, archive, this.ReportOverlayProgress).ConfigureAwait(false);
+                            ZipFile.ExtractToDirectory(archive, extracted.FullName, overwriteFiles: true);
+                        }
+                        File.WriteAllText(Path.Combine(extracted.FullName, "version"), version);
+                        if (!await this.CheckRuntimeHashes(extracted, version, mirrorFirst).ConfigureAwait(false))
+                            throw new DalamudIntegrityException("Downloaded runtime did not pass integrity verification");
+                        verified = extracted;
+                        break;
+                    }
+                    catch (Exception ex) when (mirrorFirst)
+                    {
+                        Log.Warning(ex, "[DUPDATE] Runtime mirror failed verification or download; trying official source");
+                    }
                 }
-
-                File.WriteAllText(Path.Combine(extracted.FullName, "version"), version);
                 // 取得・展開・ハッシュ検証がすべて済むまで既存の構成には触れない。
-                if (!await this.CheckRuntimeHashes(extracted, version).ConfigureAwait(false))
-                    throw new DalamudIntegrityException("Downloaded runtime did not pass integrity verification");
-
-                await this.InstallRuntime(extracted, runtimePath, version).ConfigureAwait(false);
+                await this.InstallRuntime(verified!, runtimePath, version).ConfigureAwait(false);
             }
             finally
             {
@@ -903,6 +935,8 @@ namespace XIVLauncher.Common.Dalamud
 
             await downloader.Download().ConfigureAwait(false);
         }
+
+        public Task DownloadDependencyFile(string url, string path) => DependencySource.Download(this.client, url, path, this.ReportOverlayProgress);
     }
 
     public class DalamudIntegrityException(string msg, Exception? inner = null) : Exception(msg, inner);

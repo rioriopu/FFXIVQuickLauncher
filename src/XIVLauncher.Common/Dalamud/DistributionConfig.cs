@@ -21,6 +21,12 @@ namespace XIVLauncher.Common.Dalamud;
 /// </summary>
 public static class DistributionConfig
 {
+    public static string MirrorRuntimeUrl(string version, string file) => $"{MirrorBase}runtime/{version}/{file}";
+
+    public static string MirrorAssetMetaUrl => $"{MirrorBase}assets/meta.json";
+
+    public static string MirrorAssetPackageUrl(int version) => $"{MirrorBase}assets/{version}/package.zip";
+
     /// <summary>公式 kamori のリリースベース URL(末尾 '/' 込み)。</summary>
     public const string OfficialReleaseBase = "https://kamori.goats.dev/Dalamud/Release/";
 
