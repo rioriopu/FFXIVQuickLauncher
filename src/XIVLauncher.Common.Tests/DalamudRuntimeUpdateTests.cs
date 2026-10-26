@@ -56,6 +56,105 @@ public class DalamudRuntimeUpdateTests
         Assert.AreEqual("legacy", File.ReadAllText(fixture.LegacyFile));
     }
 
+    [TestMethod]
+    public async Task UpgradesRuntimeWhenRootHostAlreadyExists()
+    {
+        using var fixture = new Fixture();
+        File.WriteAllText(Path.Combine(fixture.Runtime.FullName, "dotnet.exe"), "old-host");
+        await fixture.Update();
+        Assert.AreEqual("new-host", File.ReadAllText(Path.Combine(fixture.Runtime.FullName, "dotnet.exe")));
+    }
+
+    [TestMethod]
+    public async Task RepairsDamagedInstalledRuntime()
+    {
+        using var fixture = new Fixture();
+        await fixture.Update();
+        var core = Path.Combine(fixture.Runtime.FullName, "shared", "Microsoft.NETCore.App", "10.0.14", "coreclr.dll");
+        File.WriteAllText(core, "damaged");
+        await fixture.Update();
+        Assert.AreEqual("new-core", File.ReadAllText(core));
+        Assert.AreEqual(4, fixture.DownloadCount);
+    }
+
+    [TestMethod]
+    public async Task HealthyInstalledRuntimeDoesNotDownloadAgain()
+    {
+        using var fixture = new Fixture();
+        await fixture.Update();
+        await fixture.Update();
+        Assert.AreEqual(2, fixture.DownloadCount);
+        Assert.AreEqual("10.0.14", File.ReadAllText(Path.Combine(fixture.Runtime.FullName, "version")));
+    }
+
+    [TestMethod]
+    public async Task RepairReplacesDamagedComponentWithoutLeavingUnexpectedFiles()
+    {
+        using var fixture = new Fixture();
+        await fixture.Update();
+        var coreDirectory = Path.Combine(fixture.Runtime.FullName, "shared", "Microsoft.NETCore.App", "10.0.14");
+        File.WriteAllText(Path.Combine(coreDirectory, "coreclr.dll"), "damaged");
+        File.WriteAllText(Path.Combine(coreDirectory, "unexpected.dll"), "stale");
+        await fixture.Update();
+        Assert.IsFalse(File.Exists(Path.Combine(coreDirectory, "unexpected.dll")));
+        Assert.AreEqual("new-core", File.ReadAllText(Path.Combine(coreDirectory, "coreclr.dll")));
+        Assert.AreEqual("legacy", File.ReadAllText(fixture.LegacyFile));
+    }
+
+    [TestMethod]
+    public async Task LockedChangedHostRollsBackAndDoesNotAdvanceVersion()
+    {
+        using var fixture = new Fixture();
+        var host = Path.Combine(fixture.Runtime.FullName, "dotnet.exe");
+        File.WriteAllText(host, "old-host");
+        using var lockedFile = File.Open(host, FileMode.Open, FileAccess.Read, FileShare.Read);
+        await Assert.ThrowsExceptionAsync<IOException>(fixture.Update);
+        Assert.AreEqual("old-host", File.ReadAllText(host));
+        Assert.AreEqual("6.0.36", File.ReadAllText(Path.Combine(fixture.Runtime.FullName, "version")));
+        Assert.IsFalse(Directory.Exists(Path.Combine(fixture.Runtime.FullName, "shared", "Microsoft.NETCore.App", "10.0.14")));
+        Assert.AreEqual(0, fixture.Runtime.GetDirectories(".estell-runtime-update-*").Length);
+    }
+
+    [TestMethod]
+    public async Task UnchangedLockedHostDoesNotPreventOtherComponentRepair()
+    {
+        using var fixture = new Fixture();
+        await fixture.Update();
+        var core = Path.Combine(fixture.Runtime.FullName, "shared", "Microsoft.NETCore.App", "10.0.14", "coreclr.dll");
+        File.WriteAllText(core, "damaged");
+        using var lockedFile = File.Open(Path.Combine(fixture.Runtime.FullName, "dotnet.exe"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        await fixture.Update();
+        Assert.AreEqual("new-core", File.ReadAllText(core));
+    }
+
+    [TestMethod]
+    public async Task FailureAfterFirstReplacementRestoresOriginalComponent()
+    {
+        using var fixture = new Fixture();
+        await fixture.Update();
+        var fxr = Path.Combine(fixture.Runtime.FullName, "host", "fxr", "10.0.14", "hostfxr.dll");
+        var core = Path.Combine(fixture.Runtime.FullName, "shared", "Microsoft.NETCore.App", "10.0.14", "coreclr.dll");
+        File.WriteAllText(fxr, "original-damaged-fxr");
+        File.WriteAllText(core, "original-damaged-core");
+        using var lockedFile = File.Open(core, FileMode.Open, FileAccess.Read, FileShare.Read);
+        await Assert.ThrowsExceptionAsync<IOException>(fixture.Update);
+        Assert.AreEqual("original-damaged-fxr", File.ReadAllText(fxr));
+        Assert.AreEqual("original-damaged-core", File.ReadAllText(core));
+        Assert.AreEqual(0, fixture.Runtime.GetDirectories(".estell-runtime-update-*").Length);
+    }
+
+    [TestMethod]
+    public async Task InvalidCachedHashesAreReplacedDuringRepair()
+    {
+        using var fixture = new Fixture();
+        await fixture.Update();
+        File.WriteAllText(Path.Combine(fixture.Runtime.FullName, "hashes-10.0.14.json"), "{");
+        await fixture.Update();
+        Assert.AreEqual(4, fixture.DownloadCount);
+        await fixture.Update();
+        Assert.AreEqual(4, fixture.DownloadCount);
+    }
+
     private sealed class Fixture : HttpMessageHandler, IDisposable
     {
         private readonly DirectoryInfo root = new(Path.Combine(Path.GetTempPath(), "estell-runtime-test-" + Guid.NewGuid().ToString("N")));

@@ -459,7 +459,6 @@ namespace XIVLauncher.Common.Dalamud
                     {
                         Log.Verbose("[DUPDATE] Now download runtime...");
                         await DownloadRuntime(this.Runtime, remoteVersionInfo.RuntimeVersion).ConfigureAwait(false);
-                        File.WriteAllText(versionFile.FullName, remoteVersionInfo.RuntimeVersion);
                     }
                     catch (Exception ex)
                     {
@@ -718,11 +717,12 @@ namespace XIVLauncher.Common.Dalamud
                     ZipFile.ExtractToDirectory(archive, extracted.FullName, overwriteFiles: true);
                 }
 
+                File.WriteAllText(Path.Combine(extracted.FullName, "version"), version);
                 // 取得・展開・ハッシュ検証がすべて済むまで既存の構成には触れない。
                 if (!await this.CheckRuntimeHashes(extracted, version).ConfigureAwait(false))
                     throw new DalamudIntegrityException("Downloaded runtime did not pass integrity verification");
 
-                PlatformHelpers.CopyFilesRecursively(extracted, runtimePath);
+                await this.InstallRuntime(extracted, runtimePath, version).ConfigureAwait(false);
             }
             finally
             {
@@ -737,6 +737,146 @@ namespace XIVLauncher.Common.Dalamud
                     Log.Warning(ex, "[DUPDATE] Could not remove temporary runtime files");
                 }
             }
+        }
+
+        private async Task InstallRuntime(DirectoryInfo extracted, DirectoryInfo runtimePath, string version)
+        {
+            if (!Version.TryParse(version, out var parsedVersion) || parsedVersion.ToString() != version)
+                throw new DalamudIntegrityException("Invalid runtime version");
+
+            // 同じボリューム上に入替用と復元用を用意する。他系列のフォルダは操作対象にしない。
+            var transaction = runtimePath.CreateSubdirectory(".estell-runtime-update-" + Guid.NewGuid().ToString("N"));
+            var canCleanUp = true;
+            var replacements = new List<(string Target, string Backup, bool Directory, bool HadOriginal)>();
+            try
+            {
+                var ready = transaction.CreateSubdirectory("ready");
+                // 空の準備先にだけ、この上書きを行わない共通関数を使う。
+                PlatformHelpers.CopyFilesRecursively(extracted, ready);
+                var directories = new[]
+                {
+                    Path.Combine("host", "fxr", version),
+                    Path.Combine("shared", "Microsoft.NETCore.App", version),
+                    Path.Combine("shared", "Microsoft.WindowsDesktop.App", version),
+                };
+                var units = directories.Select(path => (Relative: path, Directory: true))
+                    .Concat(ready.GetFiles().OrderBy(file => file.Name == "version" ? 1 : 0)
+                        .Select(file => (Relative: file.Name, Directory: false))).ToArray();
+
+                foreach (var unit in units)
+                {
+                    var source = RuntimeChildPath(ready, unit.Relative);
+                    var target = RuntimeChildPath(runtimePath, unit.Relative);
+                    var backup = RuntimeChildPath(transaction, Path.Combine("backup", unit.Relative));
+                    if (unit.Directory && !System.IO.Directory.Exists(source))
+                        throw new DalamudIntegrityException("Downloaded runtime component is missing");
+
+                    // 内容が同じなら実行中の共通ホスト等には触れない。
+                    if (unit.Directory ? RuntimeDirectoriesMatch(source, target) : RuntimeFilesMatch(source, target))
+                        continue;
+
+                    var hadOriginal = unit.Directory ? System.IO.Directory.Exists(target) : File.Exists(target);
+                    if (hadOriginal)
+                    {
+                        var existingFiles = unit.Directory
+                            ? System.IO.Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories)
+                            : new[] { target };
+                        foreach (var file in existingFiles)
+                        {
+                            // 使用中の対象版は更新せず、復元して起動前の再試行に任せる。
+                            using var probe = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+                        }
+                        System.IO.Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
+                        if (unit.Directory)
+                            System.IO.Directory.Move(target, backup);
+                        else
+                            File.Move(target, backup);
+                    }
+
+                    replacements.Add((target, backup, unit.Directory, hadOriginal));
+                    System.IO.Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    if (unit.Directory)
+                        System.IO.Directory.Move(source, target);
+                    else
+                        File.Move(source, target);
+                }
+
+                // 展開先だけでなく、実際の配置先を公式ハッシュで再検査する。
+                if (!await this.CheckRuntimeHashes(runtimePath, version).ConfigureAwait(false))
+                    throw new DalamudIntegrityException("Installed runtime did not pass integrity verification");
+                Log.Information("[DUPDATE] Runtime {Version} installed and verified", version);
+            }
+            catch
+            {
+                foreach (var replacement in replacements.AsEnumerable().Reverse())
+                {
+                    try
+                    {
+                        if (replacement.Directory)
+                        {
+                            if (System.IO.Directory.Exists(replacement.Target))
+                                System.IO.Directory.Delete(replacement.Target, recursive: true);
+                            if (replacement.HadOriginal)
+                                System.IO.Directory.Move(replacement.Backup, replacement.Target);
+                        }
+                        else
+                        {
+                            File.Delete(replacement.Target);
+                            if (replacement.HadOriginal)
+                                File.Move(replacement.Backup, replacement.Target);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        canCleanUp = false;
+                        Log.Error(ex, "[DUPDATE] Could not restore runtime; backup retained at {Path}", transaction.FullName);
+                    }
+                }
+                throw;
+            }
+            finally
+            {
+                if (canCleanUp)
+                {
+                    try
+                    {
+                        // 削除・移動する全パスは、指定された runtime の内部に限定してある。
+                        RuntimeChildPath(runtimePath, transaction.Name);
+                        transaction.Delete(recursive: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning(ex, "[DUPDATE] Could not remove runtime transaction files at {Path}", transaction.FullName);
+                    }
+                }
+            }
+        }
+
+        private static string RuntimeChildPath(DirectoryInfo root, string relative)
+        {
+            var prefix = root.FullName.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var path = Path.GetFullPath(Path.Combine(root.FullName, relative));
+            if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                throw new DalamudIntegrityException("Runtime path is outside the selected directory");
+            return path;
+        }
+
+        private static bool RuntimeFilesMatch(string source, string target)
+        {
+            if (!File.Exists(target) || new FileInfo(source).Length != new FileInfo(target).Length)
+                return false;
+            using var sourceStream = File.OpenRead(source);
+            using var targetStream = File.OpenRead(target);
+            return SHA256.HashData(sourceStream).SequenceEqual(SHA256.HashData(targetStream));
+        }
+
+        private static bool RuntimeDirectoriesMatch(string source, string target)
+        {
+            if (!System.IO.Directory.Exists(target))
+                return false;
+            var files = System.IO.Directory.GetFiles(source, "*", SearchOption.AllDirectories);
+            return files.Length == System.IO.Directory.GetFiles(target, "*", SearchOption.AllDirectories).Length
+                   && files.All(file => RuntimeFilesMatch(file, Path.Combine(target, Path.GetRelativePath(source, file))));
         }
 
         private static async Task<FileStream> AcquireRuntimeUpdateLock(DirectoryInfo runtimePath)
