@@ -13,6 +13,8 @@ namespace XIVLauncher.Common.Dalamud
         public string DisplayName { get; set; }
         public string Key { get; set; }
         public string DownloadUrl { get; set; }
+        public string? MirrorDownloadUrl { get; set; }
+        public string? DownloadSha256 { get; set; }
 
         public static DalamudVersionInfo Load(FileInfo file) =>
             JsonConvert.DeserializeObject<DalamudVersionInfo>(File.ReadAllText(file.FullName));

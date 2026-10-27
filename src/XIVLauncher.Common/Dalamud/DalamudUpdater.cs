@@ -193,7 +193,7 @@ namespace XIVLauncher.Common.Dalamud
 
         private async Task<(DalamudVersionInfo release, DalamudVersionInfo? staging)> GetVersionInfo(string? betaKind, string? betaKey)
         {
-            var message = new HttpRequestMessage(HttpMethod.Get, DalamudLauncher.REMOTE_BASE + $"release&bucket={this.RolloutBucket}");
+            using var message = new HttpRequestMessage(HttpMethod.Get, DalamudLauncher.REMOTE_BASE + $"release&bucket={this.RolloutBucket}");
             message.Headers.CacheControl = new CacheControlHeaderValue
             {
                 NoCache = true
@@ -244,23 +244,16 @@ namespace XIVLauncher.Common.Dalamud
                     // これを付けないと GitHub raw の CDN(max-age=300)がエッジごとに
                     // 古いマニフェストを返し、「一部の利用者だけ更新されない」状態になる。
                     // 実際に 2026-09-08 の配布で 15 分以上 estell.30 が返り続けた。
-                    var versionInfoJsonStaging = await this.client.SendAsync(
-                        NoCacheGet(stagingUrl)).ConfigureAwait(false);
-
-                    // 取得成功時のみ採用。未定義トラックは kamori=400、静的ホスト=404 のいずれでも安全に release へフォールバック。
-                    if (versionInfoJsonStaging.IsSuccessStatusCode)
-                    {
-                        var json = await versionInfoJsonStaging.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        versionInfoStaging = JsonConvert.DeserializeObject<DalamudVersionInfo>(json);
-
-                        // [estell] 次回、配布元が落ちていても使えるようにキャッシュしておく。
-                        SaveTrackCache(trackName, json);
-                    }
-                    else
-                    {
-                        Log.Warning("[DUPDATE] Track manifest returned {Status}, trying cache", versionInfoJsonStaging.StatusCode);
-                        versionInfoStaging = LoadTrackCache(trackName);
-                    }
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    using var request = NoCacheGet(stagingUrl);
+                    using var response = await this.client.SendAsync(request, timeout.Token).ConfigureAwait(false);
+                    // HTTPエラーも通信例外と同じくミラーへ進む。
+                    response.EnsureSuccessStatusCode();
+                    var json = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+                    versionInfoStaging = ParseTrackManifest(json, trackName);
+                    if (DistributionConfig.IsCustomTrack(trackName) && versionInfoStaging.Key != betaKey)
+                        throw new InvalidDataException("配布情報のトラックキーが一致しません。");
+                    SaveTrackCache(trackName, json);
                 }
                 catch (Exception ex)
                 {
@@ -272,6 +265,10 @@ namespace XIVLauncher.Common.Dalamud
                     versionInfoStaging = await TryFetchFromMirror(trackName).ConfigureAwait(false)
                                          ?? LoadTrackCache(trackName);
                 }
+
+                if (DistributionConfig.IsCustomTrack(trackName)
+                    && (versionInfoStaging is null || versionInfoStaging.Key != betaKey))
+                    throw new DalamudIntegrityException("指定したDalamudトラックの配布情報を取得できません。別トラックへは切り替えません。");
             }
 
             return (versionInfoRelease, versionInfoStaging);
@@ -290,16 +287,15 @@ namespace XIVLauncher.Common.Dalamud
 
             try
             {
-                var response = await this.client.SendAsync(NoCacheGet(mirror)).ConfigureAwait(false);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var request = NoCacheGet(mirror);
+                using var response = await this.client.SendAsync(request, timeout.Token).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                     return null;
 
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                var info = JsonConvert.DeserializeObject<DalamudVersionInfo>(json);
-
-                if (info == null)
-                    return null;
+                var json = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+                var info = ParseTrackManifest(json, trackName);
 
                 Log.Information("[DUPDATE] Using mirrored manifest for track {Track} ({Version})", trackName, info.AssemblyVersion);
                 SaveTrackCache(trackName, json);
@@ -344,15 +340,12 @@ namespace XIVLauncher.Common.Dalamud
                     return null;
                 }
 
-                var info = JsonConvert.DeserializeObject<DalamudVersionInfo>(File.ReadAllText(file.FullName));
-
-                if (info == null)
-                    return null;
+                var info = ParseTrackManifest(File.ReadAllText(file.FullName), trackName);
 
                 var installed = new DirectoryInfo(
                     Path.Combine(this.addonDirectory.FullName, "Hooks", info.AssemblyVersion));
 
-                if (!installed.Exists || !IsIntegrity(installed))
+                if (!installed.Exists || !HasExpectedPackage(installed, info))
                 {
                     Log.Warning("[DUPDATE] Cached manifest points to {Version}, but it is not installed - ignoring cache",
                                 info.AssemblyVersion);
@@ -372,6 +365,33 @@ namespace XIVLauncher.Common.Dalamud
 
         private FileInfo GetTrackCacheFile(string trackName) =>
             new(Path.Combine(this.addonDirectory.FullName, "trackCache", trackName + ".json"));
+
+        private static DalamudVersionInfo ParseTrackManifest(string json, string track)
+        {
+            var info = JsonConvert.DeserializeObject<DalamudVersionInfo>(json)
+                       ?? throw new InvalidDataException("配布情報が空です。");
+            if (!string.Equals(info.Track, track, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(info.AssemblyVersion)
+                || info.AssemblyVersion.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                || !Uri.TryCreate(info.DownloadUrl, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps
+                || (!string.IsNullOrEmpty(info.DownloadSha256)
+                    && (info.DownloadSha256.Length != 64 || !info.DownloadSha256.All(Uri.IsHexDigit))))
+                throw new InvalidDataException("配布情報のトラック・版・取得先が不正です。");
+            return info;
+        }
+
+        private static bool HasExpectedPackage(DirectoryInfo directory, DalamudVersionInfo expected)
+        {
+            try
+            {
+                return IsIntegrity(directory) && DalamudPackage.MatchesVersion(directory, expected);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[DUPDATE] Could not verify package version {Version}", expected.AssemblyVersion);
+                return false;
+            }
+        }
 
         private async Task UpdateDalamud(string? betaKind, string? betaKey)
         {
@@ -404,7 +424,7 @@ namespace XIVLauncher.Common.Dalamud
                 new(Path.Combine(this.Runtime.FullName, "shared", "Microsoft.WindowsDesktop.App", remoteVersionInfo.RuntimeVersion)),
             };
 
-            if (!currentVersionPath.Exists || !IsIntegrity(currentVersionPath))
+            if (!currentVersionPath.Exists || !HasExpectedPackage(currentVersionPath, remoteVersionInfo))
             {
                 Log.Information("[DUPDATE] Not found, redownloading");
 
@@ -413,7 +433,6 @@ namespace XIVLauncher.Common.Dalamud
                 try
                 {
                     await DownloadDalamud(currentVersionPath, remoteVersionInfo).ConfigureAwait(true);
-                    CleanUpOld(addonPath, remoteVersionInfo.AssemblyVersion);
 
                     // This is a good indicator that we should clear the UID cache
                     cache?.Reset();
@@ -486,7 +505,7 @@ namespace XIVLauncher.Common.Dalamud
                 throw new DalamudIntegrityException("Could not ensure assets", ex);
             }
 
-            if (!IsIntegrity(currentVersionPath))
+            if (!HasExpectedPackage(currentVersionPath, remoteVersionInfo))
             {
                 throw new DalamudIntegrityException("No integrity after ensurement");
             }
@@ -595,7 +614,7 @@ namespace XIVLauncher.Common.Dalamud
 
             foreach (var directory in addonPath.GetDirectories())
             {
-                if (directory.Name == "dev" || directory.Name == currentVer) continue;
+                if (directory.Name == "dev" || directory.Name == currentVer || directory.Name.StartsWith(".estell-dalamud-", StringComparison.Ordinal)) continue;
 
                 try
                 {
@@ -615,21 +634,95 @@ namespace XIVLauncher.Common.Dalamud
 
         private async Task DownloadDalamud(DirectoryInfo addonPath, DalamudVersionInfo version)
         {
-            // Ensure directory exists
-            if (addonPath.Exists)
-                addonPath.Delete(true);
+            var parent = addonPath.Parent ?? throw new InvalidDataException("配置先が不正です。");
+            parent.Create();
+            using var updateLock = await AcquireUpdateLock(parent).ConfigureAwait(false);
+            if (System.IO.Directory.Exists(addonPath.FullName) && HasExpectedPackage(addonPath, version))
+                return;
 
-            addonPath.Create();
+            var staging = parent.CreateSubdirectory(".estell-dalamud-" + Guid.NewGuid().ToString("N"));
+            var backup = Path.Combine(staging.FullName, "previous");
+            var canCleanup = true;
+            try
+            {
+                var sources = new List<string>();
+                if (DistributionConfig.IsCustomTrack(version.Track) && DistributionConfig.HasMirror)
+                {
+                    // 旧マニフェストのlatest.zipも、DLL内の版を検証してから使う。
+                    var file = new Uri(version.DownloadUrl).AbsolutePath.EndsWith("/latest.zip", StringComparison.Ordinal)
+                                   ? "latest.zip" : Uri.EscapeDataString(version.AssemblyVersion) + ".zip";
+                    var mirror = version.MirrorDownloadUrl ?? DistributionConfig.MirrorBase + "dalamud/" + file;
+                    if (!mirror.StartsWith(DistributionConfig.MirrorBase, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("本体ZIPミラーの取得先が不正です。");
+                    sources.Add(mirror);
+                }
+                sources.Add(version.DownloadUrl);
 
-            var downloadPath = PlatformHelpers.GetTempFileName();
+                DirectoryInfo? ready = null;
+                Exception? last = null;
+                foreach (var source in sources.Distinct())
+                {
+                    var extracted = staging.CreateSubdirectory("source-" + Guid.NewGuid().ToString("N"));
+                    try
+                    {
+                        var archive = Path.Combine(staging.FullName, "package.zip");
+                        await this.DownloadFile(source, archive).ConfigureAwait(false);
+                        if (!string.IsNullOrEmpty(version.DownloadSha256))
+                        {
+                            using var data = File.OpenRead(archive);
+                            if (!string.Equals(Convert.ToHexString(SHA256.HashData(data)), version.DownloadSha256, StringComparison.OrdinalIgnoreCase))
+                                throw new DalamudIntegrityException("DalamudのZIPハッシュが配布情報と一致しません。");
+                        }
+                        ZipFile.ExtractToDirectory(archive, extracted.FullName);
+                        if (!HasExpectedPackage(extracted, version))
+                            throw new DalamudIntegrityException("Dalamudのファイルまたは版が配布情報と一致しません。");
+                        ready = extracted;
+                        Log.Information("[DUPDATE] Verified package {Version} from {Url}", version.AssemblyVersion, source);
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        last = ex;
+                        Log.Warning(ex, "[DUPDATE] Package source failed: {Url}", source);
+                    }
+                }
+                if (ready is null)
+                    throw new DalamudIntegrityException("Dalamud本体をミラーと配布元から取得・検証できませんでした。", last);
 
-            if (File.Exists(downloadPath))
-                File.Delete(downloadPath);
-
-            await this.DownloadFile(version.DownloadUrl, downloadPath).ConfigureAwait(false);
-            ZipFile.ExtractToDirectory(downloadPath, addonPath.FullName);
-
-            File.Delete(downloadPath);
+                // 取得・版検証が完了するまで、既存の配置には触れない。
+                var hadOriginal = System.IO.Directory.Exists(addonPath.FullName);
+                if (hadOriginal)
+                    System.IO.Directory.Move(addonPath.FullName, backup);
+                try
+                {
+                    System.IO.Directory.Move(ready.FullName, addonPath.FullName);
+                }
+                catch
+                {
+                    if (hadOriginal)
+                    {
+                        try { System.IO.Directory.Move(backup, addonPath.FullName); }
+                        catch (Exception restoreError)
+                        {
+                            canCleanup = false;
+                            Log.Error(restoreError, "[DUPDATE] Original package retained at {Path}", backup);
+                        }
+                    }
+                    throw;
+                }
+                CleanUpOld(parent, version.AssemblyVersion);
+            }
+            finally
+            {
+                try
+                {
+                    var prefix = Path.GetFullPath(parent.FullName).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                    if (canCleanup && staging.FullName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                        && staging.Name.StartsWith(".estell-dalamud-", StringComparison.Ordinal))
+                        staging.Delete(true);
+                }
+                catch (Exception ex) { Log.Warning(ex, "[DUPDATE] Could not remove package staging directory"); }
+            }
 
             try
             {
@@ -712,7 +805,7 @@ namespace XIVLauncher.Common.Dalamud
             // 実行中のゲームや補助プロセスが使う旧版は削除しない。
             // 同じフォルダを使う別ランチャーとの更新も、ファイルロックで直列化する。
             runtimePath.Create();
-            using var updateLock = await AcquireRuntimeUpdateLock(runtimePath).ConfigureAwait(false);
+            using var updateLock = await AcquireUpdateLock(runtimePath).ConfigureAwait(false);
             var versionDirectories = new[]
             {
                 Path.Combine(runtimePath.FullName, "host", "fxr", version),
@@ -911,7 +1004,7 @@ namespace XIVLauncher.Common.Dalamud
                    && files.All(file => RuntimeFilesMatch(file, Path.Combine(target, Path.GetRelativePath(source, file))));
         }
 
-        private static async Task<FileStream> AcquireRuntimeUpdateLock(DirectoryInfo runtimePath)
+        private static async Task<FileStream> AcquireUpdateLock(DirectoryInfo runtimePath)
         {
             var lockPath = Path.Combine(runtimePath.FullName, "estell-update.lock");
             var deadline = DateTime.UtcNow.AddMinutes(2);
@@ -930,10 +1023,7 @@ namespace XIVLauncher.Common.Dalamud
 
         public async Task DownloadFile(string url, string path)
         {
-            var downloader = new HttpClientDownloadWithProgress(this.client, url, path);
-            downloader.ProgressChanged += this.ReportOverlayProgress;
-
-            await downloader.Download().ConfigureAwait(false);
+            await DependencySource.Download(this.client, url, path, this.ReportOverlayProgress).ConfigureAwait(false);
         }
 
         public Task DownloadDependencyFile(string url, string path) => DependencySource.Download(this.client, url, path, this.ReportOverlayProgress);

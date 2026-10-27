@@ -36,7 +36,7 @@ internal static class DependencySource
         throw new HttpRequestException("ミラーと公式の配布情報を取得できませんでした。", last);
     }
 
-    public static async Task Download(HttpClient client, string url, string path, Action<long?, long, double?> progress)
+    public static async Task Download(HttpClient client, string url, string path, Action<long?, long, double?> progress, TimeSpan? inactivityTimeout = null)
     {
         using var headersTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, headersTimeout.Token).ConfigureAwait(false);
@@ -49,7 +49,7 @@ internal static class DependencySource
         while (true)
         {
             // 応答開始だけでなく、転送途中で止まった場合も代替先へ進める。
-            readTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+            readTimeout.CancelAfter(inactivityTimeout ?? TimeSpan.FromSeconds(30));
             var count = await input.ReadAsync(buffer, readTimeout.Token).ConfigureAwait(false);
             if (count == 0)
                 break;
